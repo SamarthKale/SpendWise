@@ -1,6 +1,11 @@
 package com.mj.spendwise.navigation
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.mj.spendwise.backend.SyncStatus
+import com.mj.spendwise.ui.components.OfflineBanner
+import com.mj.spendwise.ui.components.SyncChip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Chat
@@ -89,6 +94,9 @@ fun SpendWiseNavHost(navController: NavHostController = rememberNavController())
     val route = backStackEntry?.destination?.route
     val isTab = route in Routes.tabs
     val showTopBar = route != null && route != Routes.SPLASH
+    val syncStatus by expenseVm.syncStatus.collectAsStateWithLifecycle()
+    val pending by expenseVm.pendingCount.collectAsStateWithLifecycle()
+    val syncPaused by expenseVm.syncPaused.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -105,6 +113,7 @@ fun SpendWiseNavHost(navController: NavHostController = rememberNavController())
                     },
                     actions = {
                         if (isTab) {
+                            SyncChip(syncStatus, pending, compact = true)
                             IconButton(onClick = { navController.navigate(Routes.ALERTS) }) {
                                 // Unread count is a placeholder until alerts exist (Phase 8).
                                 BadgedBox(badge = { Badge { Text("2") } }) {
@@ -141,10 +150,16 @@ fun SpendWiseNavHost(navController: NavHostController = rememberNavController())
             }
         }
     ) { padding ->
+        Column(Modifier.padding(padding)) {
+        OfflineBanner(
+            visible = showTopBar && syncStatus == SyncStatus.OFFLINE,
+            message = if (syncPaused) "Sync paused (Wi-Fi only) — changes will sync on Wi-Fi."
+            else "You're offline — changes will sync automatically."
+        )
         NavHost(
             navController = navController,
             startDestination = Routes.SPLASH,
-            modifier = Modifier.padding(padding)
+            modifier = Modifier.weight(1f)
         ) {
             // 1. Splash -> Main. popUpTo(splash, inclusive) removes splash so Back exits the app.
             composable(Routes.SPLASH) {
@@ -166,7 +181,7 @@ fun SpendWiseNavHost(navController: NavHostController = rememberNavController())
             // 3. Nested graph #1: the five bottom-nav tabs.
             navigation(route = Routes.MAIN_GRAPH, startDestination = Routes.DASHBOARD) {
                 composable(Routes.DASHBOARD) {
-                    DashboardScreen(onScanReceipt = { navController.navigate(Routes.addExpense(scan = true)) })
+                    DashboardScreen(expenseVm, onScanReceipt = { navController.navigate(Routes.addExpense(scan = true)) })
                 }
                 composable(Routes.EXPENSES) {
                     ExpenseListScreen(expenseVm, onOpenExpense = { navController.navigate(Routes.expenseDetail(it)) })
@@ -208,6 +223,7 @@ fun SpendWiseNavHost(navController: NavHostController = rememberNavController())
 
             composable(Routes.ALERTS) { AlertsScreen() }
             composable(Routes.SETTINGS) { SettingsScreen(expenseVm) }
+        }
         }
     }
 }

@@ -59,6 +59,34 @@ public class FirestoreRepository {
         }
     }
 
+    /** Used by "Sync on Wi-Fi only": pauses/resumes Firestore's network connection (cache keeps working). */
+    public static void setNetworkEnabled(boolean enabled) {
+        try {
+            FirebaseFirestore db = FirebaseFirestore.getInstance();
+            (enabled ? db.enableNetwork() : db.disableNetwork())
+                    .addOnFailureListener(e -> Log.w(TAG, "setNetworkEnabled failed", e));
+        } catch (Exception e) {
+            Log.w(TAG, "setNetworkEnabled failed", e);
+        }
+    }
+
+    // ---------- sync status (derived from the single expenses listener, no extra listeners) ----------
+
+    /** Number of expenses whose write hasn't been acknowledged by the server yet. */
+    public static int countPending(List<Expense> expenses) {
+        int n = 0;
+        if (expenses != null) {
+            for (Expense e : expenses) if (e.getPending()) n++;
+        }
+        return n;
+    }
+
+    /** Offline wins; otherwise pending writes mean SYNCING; otherwise everything is on the server. */
+    public static SyncStatus computeSyncStatus(boolean online, int pendingWrites) {
+        if (!online) return SyncStatus.OFFLINE;
+        return pendingWrites > 0 ? SyncStatus.SYNCING : SyncStatus.SYNCED;
+    }
+
     // ---------- paths ----------
 
     private DocumentReference userDoc() { return db.collection("users").document(uid); }

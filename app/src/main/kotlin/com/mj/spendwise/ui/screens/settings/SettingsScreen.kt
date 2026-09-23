@@ -1,6 +1,11 @@
 package com.mj.spendwise.ui.screens.settings
 
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Switch
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.dp
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -20,6 +25,7 @@ import com.mj.spendwise.viewmodel.ExpenseViewModel
 @Composable
 fun SettingsScreen(vm: ExpenseViewModel, modifier: Modifier = Modifier) {
     val uid by vm.uid.collectAsStateWithLifecycle()
+    val wifiOnly by vm.wifiOnly.collectAsStateWithLifecycle()
     var budget by rememberSaveable { mutableStateOf("30000") }
     var showDialog by rememberSaveable { mutableStateOf(false) }
 
@@ -29,6 +35,10 @@ fun SettingsScreen(vm: ExpenseViewModel, modifier: Modifier = Modifier) {
         modifier
     ) {
         Button(onClick = { showDialog = true }) { Text("Edit monthly budget") }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Sync on Wi-Fi only", modifier = Modifier.padding(end = 12.dp))
+            Switch(checked = wifiOnly, onCheckedChange = { vm.setWifiOnly(it) })
+        }
         OutlinedButton(onClick = { vm.reseedDemoData() }) { Text("Reseed demo data") }
     }
 

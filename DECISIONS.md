@@ -23,3 +23,9 @@ Notes on choices where CLAUDE.md was ambiguous or tooling forced a call.
 10. **Package renamed to `com.mj.spendwise`** (requested: format com.company.appname). CLAUDE.md still says
     `com.spendwise`; read that as `com.mj.spendwise`. The Java backend package is `com.mj.spendwise.backend`.
     Register the Firebase Android app with this exact package name.
+11. **Sync status is derived, not a second listener.** `pendingCount` counts expenses with
+    `hasPendingWrites()` from the single expenses listener, and `syncStatus` combines that with
+    `ConnectivityMonitor` (offline wins, then pending = SYNCING, else SYNCED). The static helpers live in
+    `FirestoreRepository` (`countPending`, `computeSyncStatus`) so the logic stays in the Java backend.
+12. **Offline cold start skips the seed wait.** If the device is offline at launch, startup is marked ready
+    immediately (cached data still shows); seeding is retried on the next online launch.

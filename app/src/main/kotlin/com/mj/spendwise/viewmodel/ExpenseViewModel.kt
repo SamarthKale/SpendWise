@@ -1,6 +1,7 @@
 package com.mj.spendwise.viewmodel
 
 import android.app.Application
+import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.asFlow
 import androidx.lifecycle.viewModelScope
@@ -10,13 +11,18 @@ import com.mj.spendwise.backend.Expense
 import com.mj.spendwise.backend.FirestoreRepository
 import com.mj.spendwise.data.DemoData
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import com.mj.spendwise.backend.ConnectivityMonitor
+import com.mj.spendwise.backend.SyncStatus
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 /**
  * Single source of truth for expenses. Composables never touch Firebase; they observe [expenses]
@@ -44,8 +50,53 @@ class ExpenseViewModel(app: Application) : AndroidViewModel(app) {
         .flatMapLatest { r -> r?.observeExpenses()?.asFlow() ?: flowOf(null) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
+    // ---- connectivity + sync status (lab outcome 5) ----
+
+    private val connectivity = ConnectivityMonitor(app)
+    private val whileSubscribed = SharingStarted.WhileSubscribed(5_000)
+
+    val isOnline: StateFlow<Boolean> =
+        connectivity.isOnline().asFlow().stateIn(viewModelScope, whileSubscribed, true)
+
+    /** "Wi-Fi", "Mobile data" or "Offline". */
+    val networkType: StateFlow<String> =
+        connectivity.networkType.asFlow().stateIn(viewModelScope, whileSubscribed, "Wi-Fi")
+
+    private val prefs = app.getSharedPreferences("settings", Context.MODE_PRIVATE)
+    private val _wifiOnly = MutableStateFlow(prefs.getBoolean(KEY_WIFI_ONLY, false))
+    val wifiOnly: StateFlow<Boolean> = _wifiOnly.asStateFlow()
+
+    /** True while "Sync on Wi-Fi only" is on and we're on mobile data: Firestore's network is switched off. */
+    val syncPaused: StateFlow<Boolean> = combine(networkType, wifiOnly) { type, only ->
+        only && type == "Mobile data"
+    }.stateIn(viewModelScope, whileSubscribed, false)
+
+    /** Writes not yet acknowledged by the server, counted from the same single listener as the list. */
+    val pendingCount: StateFlow<Int> = expenses
+        .map { list -> FirestoreRepository.countPending(list) }
+        .stateIn(viewModelScope, whileSubscribed, 0)
+
+    val syncStatus: StateFlow<SyncStatus> = combine(isOnline, syncPaused, pendingCount) { online, paused, pending ->
+        FirestoreRepository.computeSyncStatus(online && !paused, pending)
+    }.stateIn(viewModelScope, whileSubscribed, SyncStatus.SYNCED)
+
     init {
         start()
+        // Apply "Sync on Wi-Fi only": disable Firestore's network on mobile data, re-enable otherwise.
+        viewModelScope.launch {
+            syncPaused.collect { paused ->
+                if (FirestoreRepository.isFirebaseConfigured(app)) FirestoreRepository.setNetworkEnabled(!paused)
+            }
+        }
+    }
+
+    fun setWifiOnly(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_WIFI_ONLY, enabled).apply()
+        _wifiOnly.value = enabled
+    }
+
+    override fun onCleared() {
+        connectivity.stop()
     }
 
     /** Anonymous sign-in, then seed demo data once. Splash waits for this. */
@@ -62,6 +113,9 @@ class ExpenseViewModel(app: Application) : AndroidViewModel(app) {
                 _uid.value = uid
                 val r = FirestoreRepository(uid)
                 repo.value = r
+                // Offline: the seed check can't reach the server, so don't keep the splash waiting.
+                // (Cached data still shows; seeding is retried on the next online launch.)
+                if (connectivity.isOnline().value == false) _startup.value = Startup.Ready
                 r.seedDemoData(DemoData.load(context), false, Callback { _startup.value = Startup.Ready })
             },
             Callback { e ->
@@ -98,5 +152,9 @@ class ExpenseViewModel(app: Application) : AndroidViewModel(app) {
     fun reseedDemoData() {
         val r = repo.value ?: return
         r.seedDemoData(DemoData.load(getApplication()), true, Callback { })
+    }
+
+    private companion object {
+        const val KEY_WIFI_ONLY = "wifi_only"
     }
 }
