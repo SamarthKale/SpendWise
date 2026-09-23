@@ -157,15 +157,23 @@ class ExpenseViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---- write operations: return false when the cloud isn't available ----
 
+    /** Read-only access for AlertsViewModel (same repository/uid, no second sign-in). */
+    val repository: StateFlow<FirestoreRepository?> = repo.asStateFlow()
+
+    /** Set by AlertsViewModel: called after the user adds/edits an expense so alert rules run right away. */
+    var onExpenseSaved: ((Expense) -> Unit)? = null
+
     fun addExpense(expense: Expense): Boolean {
         val r = repo.value ?: return false
         r.addExpense(expense, null, null)
+        onExpenseSaved?.invoke(expense)
         return true
     }
 
     fun updateExpense(expense: Expense): Boolean {
         val r = repo.value ?: return false
         r.updateExpense(expense, null)
+        onExpenseSaved?.invoke(expense)
         return true
     }
 
@@ -173,9 +181,9 @@ class ExpenseViewModel(app: Application) : AndroidViewModel(app) {
         repo.value?.deleteExpense(id, null)
     }
 
-    /** Undo for swipe-delete: writes the same document (same id) back. */
+    /** Undo for swipe-delete: writes the same document (same id) back (no alert evaluation needed). */
     fun restoreExpense(expense: Expense) {
-        updateExpense(expense)
+        repo.value?.updateExpense(expense, null)
     }
 
     fun reseedDemoData() {

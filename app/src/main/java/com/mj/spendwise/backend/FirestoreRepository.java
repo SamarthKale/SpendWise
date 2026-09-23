@@ -5,7 +5,9 @@ import android.util.Log;
 
 import androidx.lifecycle.LiveData;
 
+import com.google.android.gms.tasks.Tasks;
 import com.google.firebase.FirebaseApp;
+import com.google.firebase.firestore.QuerySnapshot;
 import com.google.firebase.firestore.CollectionReference;
 import com.google.firebase.firestore.DocumentReference;
 import com.google.firebase.firestore.DocumentSnapshot;
@@ -155,9 +157,37 @@ public class FirestoreRepository {
         ref.set(alert).addOnFailureListener(e -> Log.w(TAG, "addAlert failed", e));
     }
 
+    /** Deletes the given alerts in one batch ("Clear all" on the Alerts screen). */
+    public void deleteAlerts(List<String> ids) {
+        if (ids.isEmpty()) return;
+        WriteBatch batch = db.batch();
+        for (String id : ids) batch.delete(alerts().document(id));
+        batch.commit().addOnFailureListener(e -> Log.w(TAG, "deleteAlerts failed", e));
+    }
+
     public void markAlertRead(String id) {
         alerts().document(id).update("read", true)
                 .addOnFailureListener(e -> Log.w(TAG, "markAlertRead failed", e));
+    }
+
+    // ---------- blocking helpers for background workers (never call these on the main thread) ----------
+
+    /** Expenses with timestamp >= since. Used by the daily-reminder worker. Reads from the cache when offline. */
+    public List<Expense> getExpensesSinceBlocking(com.google.firebase.Timestamp since) throws Exception {
+        QuerySnapshot snap = Tasks.await(expenses().whereGreaterThanOrEqualTo("timestamp", since).get());
+        List<Expense> result = new ArrayList<>();
+        for (DocumentSnapshot doc : snap.getDocuments()) {
+            Expense e = doc.toObject(Expense.class);
+            if (e != null) {
+                e.setId(doc.getId());
+                result.add(e);
+            }
+        }
+        return result;
+    }
+
+    public boolean alertExistsBlocking(String id) throws Exception {
+        return Tasks.await(alerts().document(id).get()).exists();
     }
 
     // ---------- budget ----------

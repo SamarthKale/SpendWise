@@ -41,7 +41,9 @@ import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.mj.spendwise.viewmodel.AlertsViewModel
 import com.mj.spendwise.viewmodel.ExpenseViewModel
+import androidx.compose.runtime.LaunchedEffect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 import com.mj.spendwise.ui.screens.alerts.AlertsScreen
@@ -88,13 +90,28 @@ private fun titleFor(route: String?): String = when {
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SpendWiseNavHost(navController: NavHostController = rememberNavController()) {
+fun SpendWiseNavHost(
+    pendingRoute: String? = null,
+    onRouteHandled: () -> Unit = {},
+    navController: NavHostController = rememberNavController()
+) {
     // Activity-scoped: one instance (and one Firestore listener) shared by every screen.
     val expenseVm: ExpenseViewModel = viewModel()
+    val alertsVm: AlertsViewModel = viewModel()
+    LaunchedEffect(Unit) { alertsVm.attach(expenseVm) }
+    val unread by alertsVm.unreadCount.collectAsStateWithLifecycle()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val route = backStackEntry?.destination?.route
     val isTab = route in Routes.tabs
     val showTopBar = route != null && route != Routes.SPLASH
+
+    // Notification tap -> open Alerts (waits until the splash has finished).
+    LaunchedEffect(pendingRoute, route) {
+        if (pendingRoute == "alerts" && route != null && route != Routes.SPLASH) {
+            if (route != Routes.ALERTS) navController.navigate(Routes.ALERTS) { launchSingleTop = true }
+            onRouteHandled()
+        }
+    }
     val syncStatus by expenseVm.syncStatus.collectAsStateWithLifecycle()
     val pending by expenseVm.pendingCount.collectAsStateWithLifecycle()
     val syncPaused by expenseVm.syncPaused.collectAsStateWithLifecycle()
@@ -116,8 +133,8 @@ fun SpendWiseNavHost(navController: NavHostController = rememberNavController())
                         if (isTab) {
                             SyncChip(syncStatus, pending, compact = true)
                             IconButton(onClick = { navController.navigate(Routes.ALERTS) }) {
-                                // Unread count is a placeholder until alerts exist (Phase 8).
-                                BadgedBox(badge = { Badge { Text("2") } }) {
+                                // Real unread count from the alerts feed; no badge when everything is read.
+                                BadgedBox(badge = { if (unread > 0) Badge { Text(unread.toString()) } }) {
                                     Icon(Icons.Default.Notifications, contentDescription = "Alerts")
                                 }
                             }
@@ -235,8 +252,8 @@ fun SpendWiseNavHost(navController: NavHostController = rememberNavController())
                 }
             }
 
-            composable(Routes.ALERTS) { AlertsScreen() }
-            composable(Routes.SETTINGS) { SettingsScreen(expenseVm) }
+            composable(Routes.ALERTS) { AlertsScreen(alertsVm) }
+            composable(Routes.SETTINGS) { SettingsScreen(expenseVm, alertsVm) }
         }
         }
     }

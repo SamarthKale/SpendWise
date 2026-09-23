@@ -1,7 +1,13 @@
 package com.mj.spendwise
 
 import android.app.Application
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
 import com.mj.spendwise.backend.FirestoreRepository
+import com.mj.spendwise.notifications.DailyReminderWorker
+import com.mj.spendwise.notifications.NotificationHelper
+import java.util.concurrent.TimeUnit
 import org.osmdroid.config.Configuration
 import java.io.File
 
@@ -20,8 +26,14 @@ class SpendWiseApp : Application() {
             osmdroidBasePath = File(cacheDir, "osmdroid")
             osmdroidTileCache = File(cacheDir, "osmdroid/tiles")
         }
+        NotificationHelper.createChannel(this)
         if (FirestoreRepository.isFirebaseConfigured(this)) {
             FirestoreRepository.enablePersistentCache()
+            // Periodic "no expense logged today" reminder. KEEP = don't reschedule on every app start.
+            WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+                "daily_reminder", ExistingPeriodicWorkPolicy.KEEP,
+                PeriodicWorkRequestBuilder<DailyReminderWorker>(15, TimeUnit.MINUTES).build()
+            )
         }
     }
 }

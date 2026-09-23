@@ -57,7 +57,8 @@ object AnomalyDetector {
             if (past.size >= 3) {
                 val pMean = past.average()
                 val pSigma = maxOf(stdDev(past), 0.05 * pMean) // floor so identical history doesn't flag everything
-                list.filter { YearMonth.from(it.localDate()) == thisMonth && it.amount > pMean + 3 * pSigma }
+                // Also require 2x the usual: with very steady history sigma is tiny and 3 sigma alone flags modest bills.
+                list.filter { YearMonth.from(it.localDate()) == thisMonth && it.amount > pMean + 3 * pSigma && it.amount >= 2 * pMean }
                     .forEach { e ->
                         out += Anomaly(category, e.amount, pMean, "warning", "transaction", e.merchant, e.id)
                     }

@@ -49,3 +49,10 @@ Notes on choices where CLAUDE.md was ambiguous or tooling forced a call.
     engine throws on a bare `}` even though the JVM (used by unit tests) accepts it. Found by running on the emulator.
 21. **Chat matching uses whole words**, so "hi" does not fire inside "which"; ties are broken by the longest
     matched phrase. Confidence = min(0.99, 0.55 + 0.15 x keyword hits); below 0.6 falls back.
+22. **Alerts run when the user saves an expense, not on data load**, so the seeded demo data doesn't fire a wall of
+    notifications on first launch. Alert dedupe uses the Firestore document id = dedupeKey (rule + month, or the
+    expense id), checked against the live alert list before saving/notifying.
+23. **Big-ticket alerts are only raised for the just-saved expense**, and need both > mean + 3 sigma and >= 2x the
+    usual; found on the emulator when steady history made 3 sigma so tiny that 11 old expenses alerted at once.
+24. **Daily reminder** is a 15-minute periodic WorkManager job that acts only after 8 PM when nothing was logged today,
+    once per day (key `daily_reminder_<date>`). "Clear all" on the Alerts screen deletes the feed.
