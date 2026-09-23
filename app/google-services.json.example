@@ -1,0 +1,14 @@
+{
+  "_comment": "PLACEHOLDER - NOT A REAL KEY. Download the real file from Firebase console (Project settings > Your apps > com.spendwise) and save it as app/google-services.json (gitignored).",
+  "project_info": { "project_number": "000000000000", "project_id": "your-project-id" },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:000000000000:android:0000000000000000",
+        "android_client_info": { "package_name": "com.spendwise" }
+      },
+      "api_key": [ { "current_key": "YOUR_API_KEY_HERE" } ]
+    }
+  ],
+  "configuration_version": "1"
+}

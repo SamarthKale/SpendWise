@@ -40,7 +40,17 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
+    implementation(libs.androidx.lifecycle.livedata)
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.auth)
+    implementation(libs.firebase.firestore)
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     testImplementation(libs.junit)
+}
+
+// The Google services plugin needs app/google-services.json (never committed).
+// Without it the app still builds; it just shows "Firebase not configured" at runtime.
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
 }

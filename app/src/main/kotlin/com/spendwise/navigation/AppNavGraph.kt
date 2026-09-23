@@ -34,6 +34,10 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.spendwise.viewmodel.ExpenseViewModel
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import com.spendwise.ui.screens.alerts.AlertsScreen
 import com.spendwise.ui.screens.analytics.AnalyticsScreen
 import com.spendwise.ui.screens.chat.ChatScreen
@@ -79,6 +83,8 @@ private fun titleFor(route: String?): String = when {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SpendWiseNavHost(navController: NavHostController = rememberNavController()) {
+    // Activity-scoped: one instance (and one Firestore listener) shared by every screen.
+    val expenseVm: ExpenseViewModel = viewModel()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val route = backStackEntry?.destination?.route
     val isTab = route in Routes.tabs
@@ -142,11 +148,19 @@ fun SpendWiseNavHost(navController: NavHostController = rememberNavController())
         ) {
             // 1. Splash -> Main. popUpTo(splash, inclusive) removes splash so Back exits the app.
             composable(Routes.SPLASH) {
-                SplashScreen(onDone = {
-                    navController.navigate(Routes.MAIN_GRAPH) {
-                        popUpTo(Routes.SPLASH) { inclusive = true }
+                SplashScreen(
+                    awaitReady = {
+                        // Wait for sign-in + seeding, but never more than 6 s (e.g. offline first launch).
+                        withTimeoutOrNull(6_000) {
+                            expenseVm.startup.first { it !is ExpenseViewModel.Startup.Loading }
+                        }
+                    },
+                    onDone = {
+                        navController.navigate(Routes.MAIN_GRAPH) {
+                            popUpTo(Routes.SPLASH) { inclusive = true }
+                        }
                     }
-                })
+                )
             }
 
             // 3. Nested graph #1: the five bottom-nav tabs.
@@ -155,7 +169,7 @@ fun SpendWiseNavHost(navController: NavHostController = rememberNavController())
                     DashboardScreen(onScanReceipt = { navController.navigate(Routes.addExpense(scan = true)) })
                 }
                 composable(Routes.EXPENSES) {
-                    ExpenseListScreen(onOpenExpense = { navController.navigate(Routes.expenseDetail(it)) })
+                    ExpenseListScreen(expenseVm, onOpenExpense = { navController.navigate(Routes.expenseDetail(it)) })
                 }
                 composable(Routes.ANALYTICS) { AnalyticsScreen() }
                 composable(Routes.MAP) { MapScreen() }
@@ -172,8 +186,10 @@ fun SpendWiseNavHost(navController: NavHostController = rememberNavController())
                     )
                 ) { entry ->
                     AddEditExpenseScreen(
+                        vm = expenseVm,
                         scan = entry.arguments?.getBoolean(Routes.ARG_SCAN) ?: false,
-                        editId = entry.arguments?.getString(Routes.ARG_EDIT_ID)
+                        editId = entry.arguments?.getString(Routes.ARG_EDIT_ID),
+                        onSaved = { navController.popBackStack() }
                     )
                 }
                 composable(
@@ -182,6 +198,7 @@ fun SpendWiseNavHost(navController: NavHostController = rememberNavController())
                 ) { entry ->
                     val id = entry.arguments?.getString(Routes.ARG_EXPENSE_ID).orEmpty()
                     ExpenseDetailScreen(
+                        vm = expenseVm,
                         expenseId = id,
                         onEdit = { navController.navigate(Routes.addExpense(editId = id)) },
                         onDeleted = { navController.popBackStack() }
@@ -190,7 +207,7 @@ fun SpendWiseNavHost(navController: NavHostController = rememberNavController())
             }
 
             composable(Routes.ALERTS) { AlertsScreen() }
-            composable(Routes.SETTINGS) { SettingsScreen() }
+            composable(Routes.SETTINGS) { SettingsScreen(expenseVm) }
         }
     }
 }

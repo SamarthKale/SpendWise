@@ -1,12 +1,18 @@
 package com.spendwise
 
 import android.app.Application
+import com.spendwise.backend.FirestoreRepository
 
 /**
- * Application class. Later phases add Firebase/Firestore init and notification channels here.
+ * Application class. Firebase itself is initialised automatically from google-services.json;
+ * here we only switch on Firestore's persistent offline cache. Notification channels and the
+ * osmdroid user agent are added in later phases.
  */
 class SpendWiseApp : Application() {
     override fun onCreate() {
         super.onCreate()
+        if (FirestoreRepository.isFirebaseConfigured(this)) {
+            FirestoreRepository.enablePersistentCache()
+        }
     }
 }

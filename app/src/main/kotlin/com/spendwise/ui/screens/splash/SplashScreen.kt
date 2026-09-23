@@ -16,11 +16,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 
-/** Shows the logo for 1.2 s, then calls [onDone]. Phase 2 will also wait for sign-in + seeding here. */
+/**
+ * Shows the logo for at least 1.2 s while [awaitReady] (sign-in + seeding) finishes, then calls [onDone].
+ * [awaitReady] has its own timeout, so a bad network never leaves the user stuck here.
+ */
 @Composable
-fun SplashScreen(onDone: () -> Unit) {
+fun SplashScreen(awaitReady: suspend () -> Unit, onDone: () -> Unit) {
     LaunchedEffect(Unit) {
         delay(1200)
+        awaitReady()
         onDone()
     }
     Column(
