@@ -1,0 +1,11 @@
+*.iml
+.gradle/
+build/
+local.properties
+.idea/
+.kotlin/
+captures/
+.externalNativeBuild/
+.cxx/
+# Never commit Firebase config or keys
+app/google-services.json
