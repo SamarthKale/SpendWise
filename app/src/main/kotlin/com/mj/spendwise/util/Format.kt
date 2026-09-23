@@ -12,12 +12,22 @@ import java.util.Locale
 
 private val EN_IN: Locale = Locale.Builder().setLanguage("en").setRegion("IN").build()
 
+/** Whole rupees, for estimates like projections where paise are noise. */
+fun formatInrWhole(amount: Double): String = formatInr(Math.round(amount).toDouble())
+
 /** ₹1,234 or ₹1,234.50 (en-IN grouping). */
 fun formatInr(amount: Double): String {
     val f = NumberFormat.getCurrencyInstance(EN_IN)
     f.minimumFractionDigits = 0
     f.maximumFractionDigits = 2
     return f.format(amount)
+}
+
+/** ₹1.2k style for chart labels. */
+fun compactInr(amount: Double): String = when {
+    amount >= 100_000 -> "₹%.1fL".format(amount / 100_000)
+    amount >= 1_000 -> "₹%.1fk".format(amount / 1_000)
+    else -> "₹%.0f".format(amount)
 }
 
 // Timestamp <-> LocalDate always use the device time zone (CLAUDE.md 14).

@@ -181,12 +181,16 @@ fun SpendWiseNavHost(navController: NavHostController = rememberNavController())
             // 3. Nested graph #1: the five bottom-nav tabs.
             navigation(route = Routes.MAIN_GRAPH, startDestination = Routes.DASHBOARD) {
                 composable(Routes.DASHBOARD) {
-                    DashboardScreen(expenseVm, onScanReceipt = { navController.navigate(Routes.addExpense(scan = true)) })
+                    DashboardScreen(
+                        expenseVm,
+                        onScanReceipt = { navController.navigate(Routes.addExpense(scan = true)) },
+                        onOpenExpense = { navController.navigate(Routes.expenseDetail(it)) }
+                    )
                 }
                 composable(Routes.EXPENSES) {
                     ExpenseListScreen(expenseVm, onOpenExpense = { navController.navigate(Routes.expenseDetail(it)) })
                 }
-                composable(Routes.ANALYTICS) { AnalyticsScreen() }
+                composable(Routes.ANALYTICS) { AnalyticsScreen(expenseVm) }
                 composable(Routes.MAP) { MapScreen() }
                 composable(Routes.CHAT) { ChatScreen() }
             }

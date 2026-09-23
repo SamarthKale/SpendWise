@@ -11,7 +11,12 @@ import com.mj.spendwise.backend.Expense
 import com.mj.spendwise.backend.FirestoreRepository
 import com.mj.spendwise.data.DemoData
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import com.mj.spendwise.backend.BudgetConfig
 import com.mj.spendwise.backend.ConnectivityMonitor
+import com.mj.spendwise.ml.Anomaly
+import com.mj.spendwise.ml.AnomalyDetector
+import com.mj.spendwise.ml.InsightsEngine
+import java.time.LocalDate
 import com.mj.spendwise.backend.SyncStatus
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -49,6 +54,29 @@ class ExpenseViewModel(app: Application) : AndroidViewModel(app) {
     val expenses: StateFlow<List<Expense>?> = repo
         .flatMapLatest { r -> r?.observeExpenses()?.asFlow() ?: flowOf(null) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    // ---- budget + analytics (no hardcoded numbers: everything is computed from the live expense list) ----
+
+    private val _budget = MutableStateFlow(BudgetConfig())
+    val budget: StateFlow<BudgetConfig> = _budget.asStateFlow()
+
+    /** Recomputed whenever the expenses or the budget change, so the dashboard updates instantly. */
+    val engine: StateFlow<InsightsEngine?> = combine(expenses, budget) { list, b ->
+        list?.let { InsightsEngine(it, LocalDate.now(), b.monthlyBudget) }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    val anomalies: StateFlow<List<Anomaly>> = expenses
+        .map { list -> if (list == null) emptyList() else AnomalyDetector.detect(list, LocalDate.now()) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    fun saveBudget(monthly: Double, categoryBudgets: Map<String, Double>) {
+        val b = BudgetConfig().apply {
+            monthlyBudget = monthly
+            setCategoryBudgets(HashMap(categoryBudgets))
+        }
+        _budget.value = b
+        repo.value?.saveBudget(b)
+    }
 
     // ---- connectivity + sync status (lab outcome 5) ----
 
@@ -113,6 +141,7 @@ class ExpenseViewModel(app: Application) : AndroidViewModel(app) {
                 _uid.value = uid
                 val r = FirestoreRepository(uid)
                 repo.value = r
+                r.getBudget(Callback { _budget.value = it })
                 // Offline: the seed check can't reach the server, so don't keep the splash waiting.
                 // (Cached data still shows; seeding is retried on the next online launch.)
                 if (connectivity.isOnline().value == false) _startup.value = Startup.Ready
