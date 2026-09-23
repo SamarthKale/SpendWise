@@ -1,0 +1,89 @@
+{
+  "intents": [
+    {
+      "name": "greeting",
+      "keywords": ["hello", "hi", "hey", "good morning", "good evening", "namaste"],
+      "template": "Hi! I'm SpendWise AI. Ask me about your spending, budget, projections or unusual expenses.",
+      "action": "NONE",
+      "suggestions": ["How much did I spend this month?", "Will I exceed my budget?", "What's my top category?"]
+    },
+    {
+      "name": "total_spend",
+      "keywords": ["how much", "total", "spent so far", "spending", "spent", "expenses"],
+      "template": "So far this month you've spent {monthTotal}.",
+      "action": "NONE",
+      "suggestions": ["Break it down by category", "What's my projection?"]
+    },
+    {
+      "name": "category_spend",
+      "keywords": ["spend on", "spent on", "how much on", "expenses on", "category"],
+      "template": "You've spent {amount} on {category} this month — {pct}% of your total.",
+      "templateNoCategory": "Here's your spending by category this month: {breakdown}.",
+      "action": "NONE",
+      "suggestions": ["What's my top category?", "Will I exceed my budget?", "Any unusual spending?"]
+    },
+    {
+      "name": "top_category",
+      "keywords": ["top category", "biggest", "highest", "largest", "most money", "where do i spend"],
+      "template": "Your biggest spend this month is {topCategory}: {topAmount} ({topPct}% of your total).",
+      "action": "NONE",
+      "suggestions": ["Give me saving tips", "Any unusual spending?"]
+    },
+    {
+      "name": "projection",
+      "keywords": ["projection", "projected", "predict", "forecast", "end of month", "month end", "at this pace"],
+      "template": "At your current pace you'll spend about {projected} by the end of the month ({budgetVerdict}).",
+      "action": "OPEN_ANALYTICS",
+      "suggestions": ["Will I exceed my budget?", "Compare with last month"]
+    },
+    {
+      "name": "budget_status",
+      "keywords": ["budget", "exceed", "over budget", "remaining", "on track", "money left"],
+      "template": "{budgetMessage}",
+      "action": "NONE",
+      "suggestions": ["What's my projection?", "Give me saving tips"]
+    },
+    {
+      "name": "anomaly_check",
+      "keywords": ["unusual", "unusual spending", "anomaly", "anomalies", "spike", "suspicious", "abnormal", "anything strange"],
+      "template": "{anomalyMessage}",
+      "action": "OPEN_ANALYTICS",
+      "suggestions": ["Give me saving tips", "Compare with last month"]
+    },
+    {
+      "name": "saving_tips",
+      "keywords": ["save", "saving", "savings", "tips", "reduce", "cut down", "advice"],
+      "template": "{tip}",
+      "action": "NONE",
+      "suggestions": ["What's my top category?", "Will I exceed my budget?"]
+    },
+    {
+      "name": "compare_last_month",
+      "keywords": ["last month", "compare", "previous month", "month over month", "vs last"],
+      "template": "{compareMessage}",
+      "action": "OPEN_ANALYTICS",
+      "suggestions": ["What's my projection?", "Any unusual spending?"]
+    },
+    {
+      "name": "navigate_hq",
+      "keywords": ["office", "hq", "headquarters", "navigate", "directions", "take me", "get to", "route to"],
+      "template": "Sure! Here's how to get to our office.",
+      "action": "NAVIGATE_MAP",
+      "suggestions": ["How much did I spend this month?"]
+    },
+    {
+      "name": "help",
+      "keywords": ["help", "what can you do", "how do you work", "features", "commands"],
+      "template": "I can tell you your monthly total, spending per category, your top category, the month-end projection, budget status, unusual expenses, saving tips, a comparison with last month, and take you to our office on the map.",
+      "action": "NONE",
+      "suggestions": ["How much did I spend on food?", "Will I exceed my budget?", "Take me to the office"]
+    },
+    {
+      "name": "fallback",
+      "keywords": [],
+      "template": "I'm not sure I understood that. I can help with your spending totals, categories, budget, projection and unusual expenses.",
+      "action": "NONE",
+      "suggestions": ["How much did I spend this month?", "What can you do?"]
+    }
+  ]
+}

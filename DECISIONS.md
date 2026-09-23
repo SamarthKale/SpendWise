@@ -45,3 +45,7 @@ Notes on choices where CLAUDE.md was ambiguous or tooling forced a call.
     time), so Drive uses OSRM's duration and Walk uses distance / 5 km/h. The path and distance come from OSRM.
 19. **No GPS / permission:** the route starts from a sample point about 2 km from HQ so the demo always shows one.
     The Directions card sits below the map (not over it) so the whole route is visible.
+20. **Chatbot regex must be Android-safe.** The placeholder regex `\{(\w+)\}` escapes both braces: Android's regex
+    engine throws on a bare `}` even though the JVM (used by unit tests) accepts it. Found by running on the emulator.
+21. **Chat matching uses whole words**, so "hi" does not fire inside "which"; ties are broken by the longest
+    matched phrase. Confidence = min(0.99, 0.55 + 0.15 x keyword hits); below 0.6 falls back.

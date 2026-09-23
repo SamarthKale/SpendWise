@@ -3,6 +3,7 @@ package com.mj.spendwise.navigation
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.mj.spendwise.ai.ChatActionType
 import com.mj.spendwise.backend.SyncStatus
 import com.mj.spendwise.ui.components.OfflineBanner
 import com.mj.spendwise.ui.components.SyncChip
@@ -192,7 +193,16 @@ fun SpendWiseNavHost(navController: NavHostController = rememberNavController())
                 }
                 composable(Routes.ANALYTICS) { AnalyticsScreen(expenseVm) }
                 composable(Routes.MAP) { MapScreen(expenseVm) }
-                composable(Routes.CHAT) { ChatScreen() }
+                composable(Routes.CHAT) {
+                    ChatScreen(expenseVm, onAction = { action ->
+                        when (action) {
+                            ChatActionType.NAVIGATE_MAP -> navController.navigateToTab(Routes.MAP)
+                            ChatActionType.OPEN_ANALYTICS -> navController.navigateToTab(Routes.ANALYTICS)
+                            ChatActionType.OPEN_ALERTS -> navController.navigate(Routes.ALERTS)
+                            ChatActionType.NONE -> Unit
+                        }
+                    })
+                }
             }
 
             // 3. Nested graph #2: add/edit + detail, with 4. arguments.
