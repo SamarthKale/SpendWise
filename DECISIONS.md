@@ -38,3 +38,10 @@ Notes on choices where CLAUDE.md was ambiguous or tooling forced a call.
     `ReceiptTextParser` also ignores spaces inside keywords and prefers decimal amounts over phone numbers.
 16. **Location falls back to last-known.** A fresh fix is tried for 6 s, then the last known location, so the
     GPS toggle still works indoors and on emulators. Reverse geocoding is best-effort.
+17. **Map = OpenStreetMap (osmdroid) with OSRM routing.** No API key. Tiles are cached in the app cache dir; the
+    user agent is the package name (OSM tile policy). The route comes from the public OSRM demo server
+    (HttpURLConnection, 4-5 s timeouts) and falls back to a straight line + haversine/ETA on any failure.
+18. **Walk time is computed locally.** The OSRM demo server only has a car profile (its "foot" answer is a driving
+    time), so Drive uses OSRM's duration and Walk uses distance / 5 km/h. The path and distance come from OSRM.
+19. **No GPS / permission:** the route starts from a sample point about 2 km from HQ so the demo always shows one.
+    The Directions card sits below the map (not over it) so the whole route is visible.

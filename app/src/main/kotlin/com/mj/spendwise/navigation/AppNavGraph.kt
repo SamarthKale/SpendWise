@@ -191,7 +191,7 @@ fun SpendWiseNavHost(navController: NavHostController = rememberNavController())
                     ExpenseListScreen(expenseVm, onOpenExpense = { navController.navigate(Routes.expenseDetail(it)) })
                 }
                 composable(Routes.ANALYTICS) { AnalyticsScreen(expenseVm) }
-                composable(Routes.MAP) { MapScreen() }
+                composable(Routes.MAP) { MapScreen(expenseVm) }
                 composable(Routes.CHAT) { ChatScreen() }
             }
 

@@ -3,7 +3,10 @@ package com.mj.spendwise.ui.screens.expenses
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import com.mj.spendwise.ui.screens.map.MiniMap
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -58,6 +61,12 @@ fun ExpenseDetailScreen(
             DetailRow("Date", expense.prettyDateTime())
             if (!expense.notes.isNullOrBlank()) DetailRow("Notes", expense.notes)
             if (!expense.locationName.isNullOrBlank()) DetailRow("Location", expense.locationName)
+            val lat = expense.latitude
+            val lng = expense.longitude
+            if (lat != null && lng != null) {
+                // Mini OpenStreetMap showing where the expense was recorded.
+                Card(Modifier.fillMaxWidth().height(180.dp)) { MiniMap(lat, lng, expense.merchant, Modifier.fillMaxSize()) }
+            }
             DetailRow("Source", if (expense.source == "receipt_scan") "Receipt scan" else "Manual entry")
             if (expense.pending) DetailRow("Sync", "Pending - will upload when online")
 
