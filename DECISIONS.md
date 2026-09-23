@@ -56,3 +56,7 @@ Notes on choices where CLAUDE.md was ambiguous or tooling forced a call.
     usual; found on the emulator when steady history made 3 sigma so tiny that 11 old expenses alerted at once.
 24. **Daily reminder** is a 15-minute periodic WorkManager job that acts only after 8 PM when nothing was logged today,
     once per day (key `daily_reminder_<date>`). "Clear all" on the Alerts screen deletes the feed.
+25. **Landscape map layout:** map on the left, scrollable directions card on the right, so "Start navigation" is
+    reachable when the screen is short. Rotation, dark mode and process recreation were tested on the emulator.
+26. **Dead code removed** (`PlaceholderScreen`); unit tests: 46 (parser, classifier, insights, anomalies, geo/OSRM parse,
+    chat engine, alert rules); `lintDebug` passes.

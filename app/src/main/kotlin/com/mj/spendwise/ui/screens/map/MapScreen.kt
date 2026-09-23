@@ -4,6 +4,12 @@ import android.Manifest
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.platform.LocalConfiguration
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -103,38 +109,53 @@ fun MapScreen(expenseVm: ExpenseViewModel, modifier: Modifier = Modifier, mapVm:
             }
         }
 
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-            OsmMapView(
-                expenses = visible,
-                myLocation = myLocation,
-                routePoints = route.points,
-                modifier = Modifier.fillMaxSize()
-            )
-            if (!online) {
-                Surface(
-                    color = MaterialTheme.colorScheme.errorContainer,
-                    shape = MaterialTheme.shapes.small,
-                    modifier = Modifier.align(Alignment.TopCenter).padding(8.dp)
-                ) {
-                    Text("Map tiles unavailable offline", Modifier.padding(horizontal = 12.dp, vertical = 4.dp), style = MaterialTheme.typography.labelMedium)
+        val mapContent: @Composable (Modifier) -> Unit = { m ->
+            Box(m) {
+                OsmMapView(
+                    expenses = visible,
+                    myLocation = myLocation,
+                    routePoints = route.points,
+                    modifier = Modifier.fillMaxSize()
+                )
+                if (!online) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        shape = MaterialTheme.shapes.small,
+                        modifier = Modifier.align(Alignment.TopCenter).padding(8.dp)
+                    ) {
+                        Text("Map tiles unavailable offline", Modifier.padding(horizontal = 12.dp, vertical = 4.dp), style = MaterialTheme.typography.labelMedium)
+                    }
                 }
             }
         }
-        // Below the map (not on top of it) so the whole route stays visible.
-        DirectionsCard(
-            mode = mode,
-            onMode = mapVm::setMode,
-            distanceMeters = route.distanceMeters,
-            // The public OSRM demo server only knows car speeds (its "foot" answer is a driving time),
-            // so real OSRM time is used for Drive and the fixed 5 km/h estimate for Walk.
-            durationSeconds = if (route.source == "OSRM" && mode == TravelMode.DRIVE) route.durationSeconds
-            else Geo.etaSeconds(route.distanceMeters, mode),
-            routeSource = route.source,
-            sampleStart = sampleStart,
-            locationDenied = denied,
-            onStart = { startNavigation(context) },
-            modifier = Modifier.padding(8.dp)
-        )
+        val card: @Composable (Modifier) -> Unit = { m ->
+            DirectionsCard(
+                mode = mode,
+                onMode = mapVm::setMode,
+                distanceMeters = route.distanceMeters,
+                // The public OSRM demo server only knows car speeds (its "foot" answer is a driving time),
+                // so real OSRM time is used for Drive and the fixed 5 km/h estimate for Walk.
+                durationSeconds = if (route.source == "OSRM" && mode == TravelMode.DRIVE) route.durationSeconds
+                else Geo.etaSeconds(route.distanceMeters, mode),
+                routeSource = route.source,
+                sampleStart = sampleStart,
+                locationDenied = denied,
+                onStart = { startNavigation(context) },
+                modifier = m
+            )
+        }
+
+        if (LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE) {
+            // Landscape: map on the left, scrollable directions card on the right so "Start navigation" stays reachable.
+            Row(Modifier.weight(1f).fillMaxWidth()) {
+                mapContent(Modifier.weight(1f).fillMaxHeight())
+                card(Modifier.width(360.dp).verticalScroll(rememberScrollState()).padding(8.dp))
+            }
+        } else {
+            // Portrait: card below the map (not on top of it) so the whole route stays visible.
+            mapContent(Modifier.weight(1f).fillMaxWidth())
+            card(Modifier.padding(8.dp))
+        }
     }
 }
 
