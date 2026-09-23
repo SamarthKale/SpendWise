@@ -20,3 +20,6 @@ Notes on choices where CLAUDE.md was ambiguous or tooling forced a call.
    returns instantly (CLAUDE.md 7). Server failures are logged.
 9. Swipe-to-delete uses `confirmValueChange`, which is deprecated in this Compose version but works; noted
    for a Phase 9 cleanup.
+10. **Package renamed to `com.mj.spendwise`** (requested: format com.company.appname). CLAUDE.md still says
+    `com.spendwise`; read that as `com.mj.spendwise`. The Java backend package is `com.mj.spendwise.backend`.
+    Register the Firebase Android app with this exact package name.

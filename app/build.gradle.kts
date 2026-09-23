@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "com.spendwise"
+    namespace = "com.mj.spendwise"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.spendwise"
+        applicationId = "com.mj.spendwise"
         minSdk = 26
         targetSdk = 37
         versionCode = 1
