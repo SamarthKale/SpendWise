@@ -24,6 +24,9 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
     buildFeatures {
         compose = true
     }
@@ -44,9 +47,15 @@ dependencies {
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.auth)
     implementation(libs.firebase.firestore)
+    implementation(libs.mlkit.text.recognition)
+    implementation(libs.osmdroid.android)
+    implementation(libs.play.services.location)
+    implementation(libs.androidx.work.runtime.ktx)
+    implementation(libs.coil.compose)
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     testImplementation(libs.junit)
+    testImplementation(libs.json.jvm) // real org.json for JVM unit tests (Android stubs throw)
 }
 
 // The Google services plugin needs app/google-services.json (never committed).
