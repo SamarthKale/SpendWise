@@ -90,7 +90,7 @@ fun ExpenseListScreen(
             }
 
             when {
-                startup is ExpenseViewModel.Startup.Failed ->
+                startup is ExpenseViewModel.Startup.Failed && all == null ->
                     EmptyState("Cloud unavailable", (startup as ExpenseViewModel.Startup.Failed).message)
                 all == null -> LoadingState()
                 all.isEmpty() -> EmptyState("No expenses yet", "Tap + to add your first expense.")

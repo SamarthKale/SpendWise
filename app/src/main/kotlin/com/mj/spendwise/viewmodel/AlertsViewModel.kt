@@ -1,7 +1,12 @@
 package com.mj.spendwise.viewmodel
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
+import com.mj.spendwise.backend.LocalDatabase
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.filterNotNull
 import androidx.lifecycle.asFlow
 import androidx.lifecycle.viewModelScope
 import com.mj.spendwise.backend.AlertItem
@@ -34,10 +39,30 @@ class AlertsViewModel(private val app: Application) : AndroidViewModel(app) {
     private val repo = MutableStateFlow<FirestoreRepository?>(null)
     private var expenseVm: ExpenseViewModel? = null
 
+    // Local SQLite copy of the alerts: shown at startup until the live Firestore list arrives.
+    private val local = LocalDatabase.get(app)
+    private val cachedAlerts = MutableStateFlow<List<AlertItem>?>(null)
+
     // Eagerly: the dedupe check needs the current alert list even when the Alerts screen isn't open.
-    val alerts: StateFlow<List<AlertItem>?> = repo
+    private val liveAlerts: StateFlow<List<AlertItem>?> = repo
         .flatMapLatest { r -> r?.observeAlerts()?.asFlow() ?: flowOf(null) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    val alerts: StateFlow<List<AlertItem>?> = combine(liveAlerts, cachedAlerts) { live, cached -> live ?: cached }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    init {
+        viewModelScope.launch(Dispatchers.IO) { cachedAlerts.value = local.getAlerts().takeIf { it.isNotEmpty() } }
+        viewModelScope.launch(Dispatchers.IO) { // write-through on every live change
+            liveAlerts.filterNotNull().collect { list ->
+                try {
+                    local.replaceAlerts(list)
+                } catch (e: Exception) {
+                    Log.w("AlertsViewModel", "SQLite refresh failed", e)
+                }
+            }
+        }
+    }
 
     val unreadCount: StateFlow<Int> = alerts
         .map { list -> list.orEmpty().count { !it.read } }

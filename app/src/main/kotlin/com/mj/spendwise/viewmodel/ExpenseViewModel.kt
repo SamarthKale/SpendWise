@@ -2,7 +2,11 @@ package com.mj.spendwise.viewmodel
 
 import android.app.Application
 import android.content.Context
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
+import com.mj.spendwise.backend.LocalDatabase
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.filterNotNull
 import androidx.lifecycle.asFlow
 import androidx.lifecycle.viewModelScope
 import com.mj.spendwise.backend.AuthManager
@@ -50,9 +54,20 @@ class ExpenseViewModel(app: Application) : AndroidViewModel(app) {
 
     private val repo = MutableStateFlow<FirestoreRepository?>(null)
 
-    /** null = still loading (or Firebase unavailable); otherwise newest first. */
-    val expenses: StateFlow<List<Expense>?> = repo
+    // ---- local SQLite copy (lab outcome 3): shown instantly at startup, refreshed from every cloud snapshot ----
+    private val local = LocalDatabase.get(app)
+    private val cachedExpenses = MutableStateFlow<List<Expense>?>(null)
+
+    /** The single Firestore listener (live cloud data). null until the first snapshot arrives. */
+    private val liveExpenses: StateFlow<List<Expense>?> = repo
         .flatMapLatest { r -> r?.observeExpenses()?.asFlow() ?: flowOf(null) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /**
+     * What every screen shows: live cloud data once it has arrived, the SQLite copy until then.
+     * null = nothing yet (first ever launch, still loading); otherwise newest first.
+     */
+    val expenses: StateFlow<List<Expense>?> = combine(liveExpenses, cachedExpenses) { live, cached -> live ?: cached }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     // ---- budget + analytics (no hardcoded numbers: everything is computed from the live expense list) ----
@@ -76,6 +91,7 @@ class ExpenseViewModel(app: Application) : AndroidViewModel(app) {
         }
         _budget.value = b
         repo.value?.saveBudget(b)
+        viewModelScope.launch(Dispatchers.IO) { local.saveBudget(b) }
     }
 
     // ---- connectivity + sync status (lab outcome 5) ----
@@ -109,6 +125,24 @@ class ExpenseViewModel(app: Application) : AndroidViewModel(app) {
     }.stateIn(viewModelScope, whileSubscribed, SyncStatus.SYNCED)
 
     init {
+        // 1) Read the SQLite copy on a background thread so the UI has data within milliseconds of launch.
+        viewModelScope.launch(Dispatchers.IO) {
+            val t0 = System.nanoTime()
+            val rows = local.getExpenses()
+            cachedExpenses.value = rows.takeIf { it.isNotEmpty() }
+            local.getBudget()?.let { _budget.value = it }
+            Log.i("ExpenseViewModel", "Loaded ${rows.size} expenses from SQLite in ${(System.nanoTime() - t0) / 1_000_000} ms")
+        }
+        // 2) Write-through: every live snapshot refreshes the SQLite copy (one transaction, off the main thread).
+        viewModelScope.launch(Dispatchers.IO) {
+            liveExpenses.filterNotNull().collect { list ->
+                try {
+                    local.replaceExpenses(list)
+                } catch (e: Exception) {
+                    Log.w("ExpenseViewModel", "SQLite refresh failed (cache only, app keeps working)", e)
+                }
+            }
+        }
         start()
         // Apply "Sync on Wi-Fi only": disable Firestore's network on mobile data, re-enable otherwise.
         viewModelScope.launch {
@@ -141,7 +175,12 @@ class ExpenseViewModel(app: Application) : AndroidViewModel(app) {
                 _uid.value = uid
                 val r = FirestoreRepository(uid)
                 repo.value = r
-                r.getBudget(Callback { _budget.value = it })
+                r.getBudget(Callback { b ->
+                    if (b != null) { // null = couldn't read (offline): keep the SQLite copy
+                        _budget.value = b
+                        viewModelScope.launch(Dispatchers.IO) { local.saveBudget(b) }
+                    }
+                })
                 // Offline: the seed check can't reach the server, so don't keep the splash waiting.
                 // (Cached data still shows; seeding is retried on the next online launch.)
                 if (connectivity.isOnline().value == false) _startup.value = Startup.Ready

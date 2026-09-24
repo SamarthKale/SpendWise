@@ -60,3 +60,10 @@ Notes on choices where CLAUDE.md was ambiguous or tooling forced a call.
     reachable when the screen is short. Rotation, dark mode and process recreation were tested on the emulator.
 26. **Dead code removed** (`PlaceholderScreen`); unit tests: 46 (parser, classifier, insights, anomalies, geo/OSRM parse,
     chat engine, alert rules); `lintDebug` passes.
+27. **Local SQLite database added on request (lab outcome 3), overriding the original "no SQLite" rule.** Plain Android
+    `SQLiteOpenHelper` in the Java backend package (`LocalDatabase.java`), no Room. Tables: `expenses`, `alerts`,
+    `budget`. It is a write-through cache: every Firestore snapshot replaces the table in one transaction on a
+    background thread, and at startup the screens read it first (51 rows in ~9 ms) until live cloud data arrives.
+    Firestore remains the source of truth and its persistent cache still handles queued offline writes; SQLite does not
+    replace it. Upgrading the schema recreates the tables (it is only a cache). CLAUDE.md is left unchanged; this note
+    and the README supersede its "No Room/SQLite" line.

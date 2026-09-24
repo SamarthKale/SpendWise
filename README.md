@@ -10,7 +10,7 @@ and an analytics engine shows the month-end projection and unusual spending. The
 
 - Package: `com.mj.spendwise` · Min SDK 26 · compile/target SDK 37
 - Kotlin for the app; **Java only** in `com.mj.spendwise.backend` (Firestore repository, POJOs, connectivity monitor)
-- No Room/SQLite: Firestore's persistent cache is the offline store
+- Local SQLite 3 database (`spendwise.db`, plain `SQLiteOpenHelper` in the Java backend package, no Room) keeps an on-device copy for instant startup; Firestore stays the source of truth and its persistent cache handles the offline write queue
 - No Docker, no server: a plain Android app with Firebase (Anonymous Auth + Firestore) as the only backend
 
 ## Setup
@@ -40,7 +40,7 @@ On first launch the app signs in anonymously and seeds about 50 demo expenses sp
 |---|---|---|
 | 1 | Basic app, UI basics | Material 3 theme (light/dark), cards, lists, forms, dialogs, chips |
 | 2 | Multi-screen navigation | Splash → bottom nav (5 tabs), nested graphs, arguments, bottom sheet, dialogs, top-bar actions |
-| 3 | Local database | **Skipped on purpose** (replaced by Firestore's persistent cache) |
+| 3 | Local database (SQLite) | `LocalDatabase.java`: expenses, alerts and budget tables, written through on every cloud snapshot and read at startup (Settings shows the row counts) |
 | 4 | Data sync with cloud | Firestore CRUD + realtime listener + offline queue + Sync chip |
 | 5 | Network connectivity | `ConnectivityManager.NetworkCallback`, offline banner, pending count, auto-resync, "Sync on Wi-Fi only" |
 | 6 | Maps navigation | OpenStreetMap: HQ + expense markers, distance/ETA, route line (OSRM), Start navigation |

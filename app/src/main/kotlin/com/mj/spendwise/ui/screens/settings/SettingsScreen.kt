@@ -27,10 +27,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.produceState
+import com.mj.spendwise.backend.LocalDatabase
 import com.mj.spendwise.notifications.NotificationHelper
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import java.text.DateFormat
+import java.util.Date
 import com.mj.spendwise.util.formatInr
 import com.mj.spendwise.viewmodel.AlertsViewModel
 import com.mj.spendwise.viewmodel.ExpenseViewModel
+
+private data class LocalStats(val expenses: Long, val alerts: Long, val savedAt: Long)
 
 @Composable
 fun SettingsScreen(vm: ExpenseViewModel, alertsVm: AlertsViewModel, modifier: Modifier = Modifier) {
@@ -39,6 +48,17 @@ fun SettingsScreen(vm: ExpenseViewModel, alertsVm: AlertsViewModel, modifier: Mo
     val wifiOnly by vm.wifiOnly.collectAsStateWithLifecycle()
     val budget by vm.budget.collectAsStateWithLifecycle()
     var showBudget by rememberSaveable { mutableStateOf(false) }
+
+    // Row counts read from SQLite (off the main thread); re-read whenever the lists change.
+    val expenseCount = vm.expenses.collectAsStateWithLifecycle().value?.size
+    val alertCount = alertsVm.alerts.collectAsStateWithLifecycle().value?.size
+    val localStats by produceState<LocalStats?>(null, expenseCount, alertCount) {
+        delay(500) // the write-through runs right after a change; give it a moment
+        value = withContext(Dispatchers.IO) {
+            val db = LocalDatabase.get(context)
+            LocalStats(db.expenseCount(), db.alertCount(), db.lastSavedAt())
+        }
+    }
     var notificationsOn by remember { mutableStateOf(NotificationHelper.isEnabled(context)) }
     var permissionNote by remember { mutableStateOf<String?>(null) }
     var afterPermission by remember { mutableStateOf<(() -> Unit)?>(null) }
@@ -90,6 +110,16 @@ fun SettingsScreen(vm: ExpenseViewModel, alertsVm: AlertsViewModel, modifier: Mo
             Switch(checked = wifiOnly, onCheckedChange = { vm.setWifiOnly(it) })
         }
         OutlinedButton(onClick = { vm.reseedDemoData() }) { Text("Reseed demo data") }
+
+        Text("Local database (SQLite)", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "${localStats?.expenses ?: "…"} expenses · ${localStats?.alerts ?: "…"} alerts saved on this device in " +
+                "${LocalDatabase.NAME}. Shown instantly at startup; refreshed from the cloud on every change.",
+            style = MaterialTheme.typography.bodySmall
+        )
+        localStats?.takeIf { it.savedAt > 0 }?.let {
+            Text("Last refreshed ${DateFormat.getTimeInstance(DateFormat.MEDIUM).format(Date(it.savedAt))}", style = MaterialTheme.typography.bodySmall)
+        }
 
         Text("About", style = MaterialTheme.typography.titleMedium)
         Text("SpendWise ${appVersion(context)}", style = MaterialTheme.typography.bodySmall)

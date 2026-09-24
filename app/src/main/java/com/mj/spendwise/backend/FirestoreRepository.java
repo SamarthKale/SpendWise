@@ -196,7 +196,7 @@ public class FirestoreRepository {
         budgetDoc().get().addOnSuccessListener(doc -> {
             BudgetConfig b = doc.exists() ? doc.toObject(BudgetConfig.class) : null;
             cb.onResult(b != null ? b : new BudgetConfig());
-        }).addOnFailureListener(e -> cb.onResult(new BudgetConfig()));
+        }).addOnFailureListener(e -> cb.onResult(null)); // null = could not read (e.g. offline, nothing cached)
     }
 
     public void saveBudget(BudgetConfig budget) {
