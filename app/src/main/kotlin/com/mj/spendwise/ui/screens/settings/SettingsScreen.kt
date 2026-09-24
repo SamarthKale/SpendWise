@@ -28,7 +28,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.produceState
-import com.mj.spendwise.backend.LocalDatabase
+import com.mj.spendwise.backend.LocalProfiles
+import com.mj.spendwise.backend.ProfileKeys
 import com.mj.spendwise.notifications.NotificationHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -39,7 +40,14 @@ import com.mj.spendwise.util.formatInr
 import com.mj.spendwise.viewmodel.AlertsViewModel
 import com.mj.spendwise.viewmodel.ExpenseViewModel
 
-private data class LocalStats(val expenses: Long, val alerts: Long, val savedAt: Long)
+private data class LocalStats(
+    val file: String,
+    val expenses: Long,
+    val alerts: Long,
+    val savedAt: Long,
+    val profiles: Long,
+    val logins: Int
+)
 
 @Composable
 fun SettingsScreen(vm: ExpenseViewModel, alertsVm: AlertsViewModel, modifier: Modifier = Modifier) {
@@ -57,11 +65,15 @@ fun SettingsScreen(vm: ExpenseViewModel, alertsVm: AlertsViewModel, modifier: Mo
     // Row counts read from SQLite (off the main thread); re-read whenever the lists change.
     val expenseCount = vm.expenses.collectAsStateWithLifecycle().value?.size
     val alertCount = alertsVm.alerts.collectAsStateWithLifecycle().value?.size
-    val localStats by produceState<LocalStats?>(null, expenseCount, alertCount) {
+    val localDb by vm.localDb.collectAsStateWithLifecycle()
+    val currentUid by vm.uid.collectAsStateWithLifecycle()
+    val localStats by produceState<LocalStats?>(null, expenseCount, alertCount, localDb) {
         delay(500) // the write-through runs right after a change; give it a moment
-        value = withContext(Dispatchers.IO) {
-            val db = LocalDatabase.get(context)
-            LocalStats(db.expenseCount(), db.alertCount(), db.lastSavedAt())
+        val db = localDb
+        value = if (db == null) null else withContext(Dispatchers.IO) {
+            val registry = LocalProfiles.get(context)
+            val me = registry.get(ProfileKeys.keyFor(currentUid.orEmpty(), vm.isGuest.value))
+            LocalStats(db.fileName(), db.expenseCount(), db.alertCount(), db.lastSavedAt(), registry.count(), me?.loginCount ?: 0)
         }
     }
     var notificationsOn by remember { mutableStateOf(NotificationHelper.isEnabled(context)) }
@@ -122,14 +134,18 @@ fun SettingsScreen(vm: ExpenseViewModel, alertsVm: AlertsViewModel, modifier: Mo
             Text("Sync on Wi-Fi only", modifier = Modifier.weight(1f))
             Switch(checked = wifiOnly, onCheckedChange = { vm.setWifiOnly(it) })
         }
-        OutlinedButton(onClick = { vm.reseedDemoData() }) { Text("Reseed demo data") }
+        OutlinedButton(onClick = { vm.reseedDemoData() }) { Text("Load demo data") }
 
         Text("Local database (SQLite)", style = MaterialTheme.typography.titleMedium)
         Text(
             "${localStats?.expenses ?: "…"} expenses · ${localStats?.alerts ?: "…"} alerts saved on this device in " +
-                "${LocalDatabase.NAME}. Shown instantly at startup; refreshed from the cloud on every change.",
+                "${localStats?.file ?: "your database"}. Your login has its own SQLite file; it is shown instantly at " +
+                "startup and refreshed from the cloud on every change.",
             style = MaterialTheme.typography.bodySmall
         )
+        localStats?.let {
+            Text("This login: ${it.logins} sign-in(s) · ${it.profiles} login profile(s) on this device", style = MaterialTheme.typography.bodySmall)
+        }
         localStats?.takeIf { it.savedAt > 0 }?.let {
             Text("Last refreshed ${DateFormat.getTimeInstance(DateFormat.MEDIUM).format(Date(it.savedAt))}", style = MaterialTheme.typography.bodySmall)
         }

@@ -24,7 +24,7 @@ and an analytics engine shows the month-end projection and unusual spending. The
 
 ```
 ./gradlew assembleDebug          # APK in app/build/outputs/apk/debug
-./gradlew testDebugUnitTest      # 46 unit tests
+./gradlew testDebugUnitTest      # 53 unit tests
 ./gradlew lintDebug
 ```
 
@@ -103,3 +103,7 @@ Alerts feed + notification shade · Settings.
 - The OSRM demo server and OSM tile servers are free shared services: fine for a lab demo, not for production.
 - The daily reminder uses a 15-minute WorkManager job (the platform minimum) and acts only after 8 PM.
 - Anonymous auth means data belongs to the device's anonymous user; reinstalling creates a new user.
+
+## Running it from a fresh clone
+See [`RUN.md`](RUN.md): prerequisites, build/run/test commands, the local SQLite databases (created automatically on first
+launch: a guest database pre-filled with demo data, and one empty database per email account), and troubleshooting.

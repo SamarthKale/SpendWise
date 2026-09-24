@@ -5,6 +5,9 @@ import android.content.Context
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import com.mj.spendwise.backend.LocalDatabase
+import com.mj.spendwise.backend.LocalProfiles
+import com.mj.spendwise.backend.ProfileKeys
+import com.mj.spendwise.data.LocalProvisioner
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.filterNotNull
 import androidx.lifecycle.asFlow
@@ -57,7 +60,11 @@ class ExpenseViewModel(app: Application) : AndroidViewModel(app) {
     private val repo = MutableStateFlow<FirestoreRepository?>(null)
 
     // ---- local SQLite copy (lab outcome 3): shown instantly at startup, refreshed from every cloud snapshot ----
-    private val local = LocalDatabase.get(app)
+    // Each login profile has its own SQLite file (guest = pre-filled with demo data, email accounts start empty).
+    @Volatile private var local: LocalDatabase? = null
+    private val _localDb = MutableStateFlow<LocalDatabase?>(null)
+    /** The database of the signed-in profile (null when signed out). Alerts and Settings read it too. */
+    val localDb: StateFlow<LocalDatabase?> = _localDb.asStateFlow()
     private val cachedExpenses = MutableStateFlow<List<Expense>?>(null)
 
     /** The single Firestore listener (live cloud data). null until the first snapshot arrives. */
@@ -93,7 +100,7 @@ class ExpenseViewModel(app: Application) : AndroidViewModel(app) {
         }
         _budget.value = b
         repo.value?.saveBudget(b)
-        viewModelScope.launch(Dispatchers.IO) { local.saveBudget(b) }
+        viewModelScope.launch(Dispatchers.IO) { local?.saveBudget(b) }
     }
 
     // ---- connectivity + sync status (lab outcome 5) ----
@@ -134,21 +141,12 @@ class ExpenseViewModel(app: Application) : AndroidViewModel(app) {
     val isGuest: StateFlow<Boolean> = _isGuest.asStateFlow()
 
     init {
-        // 1) Read the SQLite copy on a background thread so the UI has data within milliseconds of launch.
-        viewModelScope.launch(Dispatchers.IO) {
-            // The copy is only valid for the user who is signed in now; anything else is stale, so wipe it.
-            if (prefs.getString(KEY_CACHE_UID, null) != AuthManager.currentUid()) local.clearAll()
-            val t0 = System.nanoTime()
-            val rows = local.getExpenses()
-            cachedExpenses.value = rows.takeIf { it.isNotEmpty() }
-            local.getBudget()?.let { _budget.value = it }
-            Log.i("ExpenseViewModel", "Loaded ${rows.size} expenses from SQLite in ${(System.nanoTime() - t0) / 1_000_000} ms")
-        }
-        // 2) Write-through: every live snapshot refreshes the SQLite copy (one transaction, off the main thread).
+        // Write-through: every live snapshot refreshes the signed-in profile's SQLite copy (one transaction,
+        // off the main thread). The copy is READ in openProfile(), as soon as someone is signed in.
         viewModelScope.launch(Dispatchers.IO) {
             liveExpenses.filterNotNull().collect { list ->
                 try {
-                    local.replaceExpenses(list)
+                    local?.replaceExpenses(list)
                 } catch (e: Exception) {
                     Log.w("ExpenseViewModel", "SQLite refresh failed (cache only, app keeps working)", e)
                 }
@@ -201,21 +199,62 @@ class ExpenseViewModel(app: Application) : AndroidViewModel(app) {
         _startup.value = Startup.Loading
         _uid.value = uid
         _email.value = AuthManager.currentEmail()
-        _isGuest.value = AuthManager.isGuest()
-        prefs.edit().putString(KEY_CACHE_UID, uid).apply() // the SQLite copy now belongs to this user
+        val guest = AuthManager.isGuest()
+        _isGuest.value = guest
+        openProfile(uid, guest, AuthManager.currentEmail())
 
         val r = FirestoreRepository(uid)
         repo.value = r
         r.getBudget(Callback { b ->
             if (b != null) { // null = couldn't read (offline): keep the SQLite copy
                 _budget.value = b
-                viewModelScope.launch(Dispatchers.IO) { local.saveBudget(b) }
+                viewModelScope.launch(Dispatchers.IO) { local?.saveBudget(b) }
             }
         })
-        // Offline: the seed check can't reach the server, so don't keep the splash waiting.
-        // (Cached data still shows; seeding is retried on the next online launch.)
+        if (!guest) {
+            // A real account starts EMPTY (its own empty SQLite file, nothing seeded in the cloud).
+            // "Load demo data" in Settings / on the empty dashboard adds the sample expenses on request.
+            _startup.value = Startup.Ready
+            return
+        }
+        // Guests get the demo data. Offline: the seed check can't reach the server, so don't keep the splash
+        // waiting (cached data still shows; seeding is retried on the next online launch).
         if (connectivity.isOnline().value == false) _startup.value = Startup.Ready
         r.seedDemoData(DemoData.load(context), false, Callback { _startup.value = Startup.Ready })
+    }
+
+    /**
+     * Opens THIS login's own SQLite database and shows its rows instantly (before the cloud answers):
+     *  - guest: spendwise_guest.db, pre-filled with demo data at first run
+     *  - email account: spendwise_u_<uid>.db, empty until the account has data
+     * Also records the login in the on-device registry (spendwise_app.db).
+     */
+    private fun openProfile(uid: String, guest: Boolean, email: String?) {
+        val context = getApplication<Application>()
+        local = null // never write this login's data into the previous profile's file
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                if (guest) {
+                    // A different anonymous cloud user than last time means the old guest data is unreachable,
+                    // so the guest database restarts from a fresh copy of the demo data.
+                    val previous = prefs.getString(KEY_GUEST_UID, null)
+                    if (previous != null && previous != uid) LocalProvisioner.resetGuestDatabase(context)
+                    prefs.edit().putString(KEY_GUEST_UID, uid).apply()
+                    LocalProvisioner.ensureGuestDatabase(context)
+                }
+                LocalProfiles.get(context).recordLogin(uid, email, guest)
+                val db = LocalDatabase.forProfile(context, ProfileKeys.keyFor(uid, guest))
+                val t0 = System.nanoTime()
+                val rows = db.getExpenses()
+                local = db
+                _localDb.value = db
+                cachedExpenses.value = rows.takeIf { it.isNotEmpty() }
+                db.getBudget()?.let { _budget.value = it }
+                Log.i("ExpenseViewModel", "Opened ${db.fileName()}: ${rows.size} expenses in ${(System.nanoTime() - t0) / 1_000_000} ms")
+            } catch (e: Exception) {
+                Log.w("ExpenseViewModel", "Could not open the local database (the app works from the cloud)", e)
+            }
+        }
     }
 
     /** Runs [call] with success/error wiring shared by every sign-in style. */
@@ -242,13 +281,38 @@ class ExpenseViewModel(app: Application) : AndroidViewModel(app) {
     fun linkEmail(email: String, password: String, onDone: () -> Unit, onError: (String) -> Unit) {
         AuthManager.linkEmail(
             email.trim(), password,
-            Callback { _ ->
+            Callback { uid ->
                 _email.value = AuthManager.currentEmail()
                 _isGuest.value = AuthManager.isGuest()
+                moveGuestDataToAccount(uid)
                 onDone()
             },
             Callback { e -> onError(AuthManager.describe(e)) }
         )
+    }
+
+    /**
+     * After "Create account (keep my data)": the same cloud user is now an email account, so what is on screen is
+     * copied into that account's own SQLite file, and the guest file starts over with a fresh demo copy.
+     */
+    private fun moveGuestDataToAccount(uid: String) {
+        val context = getApplication<Application>()
+        val onScreen = expenses.value.orEmpty()
+        val budgetNow = _budget.value
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                LocalProfiles.get(context).recordLogin(uid, AuthManager.currentEmail(), false)
+                val db = LocalDatabase.forProfile(context, ProfileKeys.keyFor(uid, false))
+                db.replaceExpenses(onScreen)
+                db.saveBudget(budgetNow)
+                local = db
+                _localDb.value = db
+                prefs.edit().remove(KEY_GUEST_UID).apply()
+                LocalProvisioner.resetGuestDatabase(context)
+            } catch (e: Exception) {
+                Log.w("ExpenseViewModel", "Could not move guest data to the account database", e)
+            }
+        }
     }
 
     fun sendPasswordReset(email: String, onDone: () -> Unit, onError: (String) -> Unit) {
@@ -258,8 +322,9 @@ class ExpenseViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * Signs out and forgets everything that belonged to the user: cloud listeners stop (repo = null), the
-     * SQLite copy is wiped, and the login screen is shown. Other ViewModels follow [uid] / [startup].
+     * Signs out: cloud listeners stop (repo = null), nothing is shown from the previous login any more and the
+     * login screen appears. The user's own SQLite file stays on the device, untouched, ready for their next login
+     * (a different login opens a different file, so data never mixes). Other ViewModels follow [uid] / [startup].
      */
     fun signOut() {
         AuthManager.signOut()
@@ -267,11 +332,11 @@ class ExpenseViewModel(app: Application) : AndroidViewModel(app) {
         _uid.value = null
         _email.value = null
         _isGuest.value = false
+        local = null
+        _localDb.value = null
         cachedExpenses.value = null
         _budget.value = BudgetConfig()
         _startup.value = Startup.NeedsLogin
-        prefs.edit().remove(KEY_CACHE_UID).apply()
-        viewModelScope.launch(Dispatchers.IO) { local.clearAll() }
     }
 
     // ---- write operations: return false when the cloud isn't available ----
@@ -312,6 +377,6 @@ class ExpenseViewModel(app: Application) : AndroidViewModel(app) {
 
     private companion object {
         const val KEY_WIFI_ONLY = "wifi_only"
-        const val KEY_CACHE_UID = "cache_uid" // whose data the SQLite copy holds
+        const val KEY_GUEST_UID = "guest_uid" // cloud uid the guest SQLite file currently belongs to
     }
 }

@@ -19,7 +19,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Local SQLite 3 database (file: databases/spendwise.db). It keeps an on-device copy of the expenses, alerts
+ * Local SQLite 3 database, ONE FILE PER LOGIN PROFILE (databases/spendwise_guest.db, spendwise_u_<uid>.db). It keeps an on-device copy of the expenses, alerts
  * and budget so the app can show data INSTANTLY at startup (before Firestore answers) and even with no cloud.
  * Firestore stays the source of truth: every snapshot from the cloud is written here (write-through), and
  * this database is only read to fill the screens until live data arrives.
@@ -28,17 +28,39 @@ import java.util.Map;
  * Being a cache, upgrading the schema simply recreates the tables.
  */
 public class LocalDatabase extends SQLiteOpenHelper {
-    public static final String NAME = "spendwise.db";
-    private static final int VERSION = 1;
-    private static LocalDatabase instance;
+    private static final int VERSION = 2;
+    /** One open helper per file, so a profile's database is only ever opened once. */
+    private static final Map<String, LocalDatabase> OPEN = new HashMap<>();
 
-    public static synchronized LocalDatabase get(Context context) {
-        if (instance == null) instance = new LocalDatabase(context.getApplicationContext());
-        return instance;
+    /**
+     * The database of one login profile ("guest" or a Firebase uid). Each profile has its own file, so a new
+     * login starts from an empty database and never sees another login's rows.
+     */
+    public static synchronized LocalDatabase forProfile(Context context, String profileKey) {
+        String file = ProfileKeys.dbFileName(profileKey);
+        LocalDatabase db = OPEN.get(file);
+        if (db == null) {
+            db = new LocalDatabase(context.getApplicationContext(), file);
+            OPEN.put(file, db);
+        }
+        return db;
     }
 
-    private LocalDatabase(Context context) {
-        super(context, NAME, null, VERSION);
+    /** Closes and deletes a profile's file (used to give the guest profile a fresh start). */
+    public static synchronized void deleteProfile(Context context, String profileKey) {
+        String file = ProfileKeys.dbFileName(profileKey);
+        LocalDatabase db = OPEN.remove(file);
+        if (db != null) db.close();
+        context.getApplicationContext().deleteDatabase(file);
+    }
+
+    private LocalDatabase(Context context, String fileName) {
+        super(context, fileName, null, VERSION);
+    }
+
+    /** File name of this database, e.g. "spendwise_guest.db". */
+    public String fileName() {
+        return getDatabaseName();
     }
 
     @Override
@@ -53,6 +75,16 @@ public class LocalDatabase extends SQLiteOpenHelper {
                 "dedupe_key TEXT, created_ms INTEGER NOT NULL, is_read INTEGER NOT NULL DEFAULT 0, saved_at INTEGER NOT NULL)");
         db.execSQL("CREATE INDEX idx_alerts_time ON alerts(created_ms DESC)");
         db.execSQL("CREATE TABLE budget (id INTEGER PRIMARY KEY CHECK (id = 1), monthly REAL NOT NULL, category_json TEXT)");
+        db.execSQL("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)");
+    }
+
+    /** True once the first-run demo data has been written (the guest profile), so it is never written twice. */
+    public boolean isProvisioned() {
+        return DatabaseUtils.longForQuery(getReadableDatabase(), "SELECT COUNT(*) FROM meta WHERE key = 'provisioned'", null) > 0;
+    }
+
+    public void markProvisioned() {
+        getWritableDatabase().execSQL("INSERT OR REPLACE INTO meta (key, value) VALUES ('provisioned', '1')");
     }
 
     @Override
@@ -60,21 +92,8 @@ public class LocalDatabase extends SQLiteOpenHelper {
         db.execSQL("DROP TABLE IF EXISTS expenses");
         db.execSQL("DROP TABLE IF EXISTS alerts");
         db.execSQL("DROP TABLE IF EXISTS budget");
+        db.execSQL("DROP TABLE IF EXISTS meta");
         onCreate(db);
-    }
-
-    /** Wipes every cached row. Called on sign-out so the next user never sees the previous user's data. */
-    public void clearAll() {
-        SQLiteDatabase db = getWritableDatabase();
-        db.beginTransaction();
-        try {
-            db.delete("expenses", null, null);
-            db.delete("alerts", null, null);
-            db.delete("budget", null, null);
-            db.setTransactionSuccessful();
-        } finally {
-            db.endTransaction();
-        }
     }
 
     // ---------------- expenses ----------------

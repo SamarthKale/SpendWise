@@ -79,6 +79,18 @@ fun DashboardScreen(
             }
         }
         item { OutlinedButton(onClick = onScanReceipt, Modifier.fillMaxWidth()) { Text("Scan receipt") } }
+        if (expenses.orEmpty().isEmpty()) {
+            // A new email account starts empty: say so, and offer the sample data.
+            item {
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Welcome! Your account is empty.", style = MaterialTheme.typography.titleMedium)
+                        Text("Add your first expense with the + button or Scan receipt, or load sample data to explore the app.")
+                        OutlinedButton(onClick = { vm.reseedDemoData() }) { Text("Load demo data") }
+                    }
+                }
+            }
+        }
         item { MonthCard(e) }
         item { ProjectionCard(e) }
         item {

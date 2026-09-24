@@ -77,3 +77,12 @@ Notes on choices where CLAUDE.md was ambiguous or tooling forced a call.
     sees another's data. Requires Email/Password to be enabled in the Firebase console.
 29. **Build note:** if Gradle fails with "jlink executable ... does not exist", an IDE-started Gradle daemon is using
     a JRE without jlink. Run `./gradlew --stop` and build with JAVA_HOME pointing at a full JDK (17+).
+30. **One SQLite file per login profile (replaces the single shared `spendwise.db`).** `spendwise_app.db` is a registry
+    of logins on the device (uid, email, guest flag, last login, login count). `spendwise_guest.db` is created on the
+    app's first launch and pre-filled with the demo expenses, so a colleague who clones the repo and runs the app gets
+    it automatically (`LocalProvisioner`, called from the Application class). Each email account gets its own
+    `spendwise_u_<uid>.db`, created empty at its first login; all new data goes into it. A login never reads another's
+    file. Sign-out no longer wipes the data: the file stays for that user's next login. New email accounts are not
+    seeded in the cloud either; the dashboard offers "Load demo data". A new anonymous guest (new cloud uid) resets the
+    guest file to a fresh demo copy; "Create account (keep my data)" copies the guest's data into the new account's file.
+    Old builds' `spendwise.db` is deleted on first run. `RUN.md` documents running the project from scratch.

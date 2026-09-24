@@ -1,6 +1,8 @@
 package com.mj.spendwise
 
 import android.app.Application
+import android.util.Log
+import com.mj.spendwise.data.LocalProvisioner
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
@@ -27,6 +29,14 @@ class SpendWiseApp : Application() {
             osmdroidTileCache = File(cacheDir, "osmdroid/tiles")
         }
         NotificationHelper.createChannel(this)
+        // First run on this device: create the SQLite databases and fill the guest one with demo data.
+        Thread {
+            try {
+                LocalProvisioner.provisionOnFirstRun(this)
+            } catch (e: Exception) {
+                Log.w("SpendWiseApp", "Could not create the local databases (the app still works from the cloud)", e)
+            }
+        }.start()
         if (FirestoreRepository.isFirebaseConfigured(this)) {
             FirestoreRepository.enablePersistentCache()
             // Periodic "no expense logged today" reminder. KEEP = don't reschedule on every app start.

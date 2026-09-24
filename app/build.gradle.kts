@@ -63,3 +63,8 @@ dependencies {
 if (file("google-services.json").exists()) {
     apply(plugin = "com.google.gms.google-services")
 }
+
+// Colleague-friendly hint: without the Firebase config the app builds but shows "Firebase is not configured".
+if (!file("google-services.json").exists()) {
+    logger.warn("WARNING: app/google-services.json is missing. Ask the project owner for it and put it in app/ (see RUN.md).")
+}

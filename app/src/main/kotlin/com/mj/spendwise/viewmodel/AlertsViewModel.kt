@@ -3,7 +3,7 @@ package com.mj.spendwise.viewmodel
 import android.app.Application
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
-import com.mj.spendwise.backend.LocalDatabase
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.filterNotNull
@@ -39,8 +39,8 @@ class AlertsViewModel(private val app: Application) : AndroidViewModel(app) {
     private val repo = MutableStateFlow<FirestoreRepository?>(null)
     private var expenseVm: ExpenseViewModel? = null
 
-    // Local SQLite copy of the alerts: shown at startup until the live Firestore list arrives.
-    private val local = LocalDatabase.get(app)
+    // Local SQLite copy of the alerts (in the signed-in profile's own database file): shown at startup until the
+    // live Firestore list arrives.
     private val cachedAlerts = MutableStateFlow<List<AlertItem>?>(null)
 
     // Eagerly: the dedupe check needs the current alert list even when the Alerts screen isn't open.
@@ -52,11 +52,10 @@ class AlertsViewModel(private val app: Application) : AndroidViewModel(app) {
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     init {
-        viewModelScope.launch(Dispatchers.IO) { cachedAlerts.value = local.getAlerts().takeIf { it.isNotEmpty() } }
         viewModelScope.launch(Dispatchers.IO) { // write-through on every live change
             liveAlerts.filterNotNull().collect { list ->
                 try {
-                    local.replaceAlerts(list)
+                    expenseVm?.localDb?.value?.replaceAlerts(list)
                 } catch (e: Exception) {
                     Log.w("AlertsViewModel", "SQLite refresh failed", e)
                 }
@@ -74,8 +73,13 @@ class AlertsViewModel(private val app: Application) : AndroidViewModel(app) {
         expenseVm = vm
         vm.onExpenseSaved = { saved -> onExpenseSaved(saved) }
         viewModelScope.launch { vm.repository.collect { repo.value = it } }
-        // Signed out: forget the previous user's cached alerts too.
-        viewModelScope.launch { vm.uid.collect { if (it == null) cachedAlerts.value = null } }
+        // Follow the signed-in profile's database: load its cached alerts (none when signed out).
+        viewModelScope.launch {
+            vm.localDb.collect { db ->
+                cachedAlerts.value = if (db == null) null
+                else withContext(Dispatchers.IO) { db.getAlerts().takeIf { it.isNotEmpty() } }
+            }
+        }
     }
 
     private fun onExpenseSaved(saved: Expense) {
