@@ -67,3 +67,13 @@ Notes on choices where CLAUDE.md was ambiguous or tooling forced a call.
     Firestore remains the source of truth and its persistent cache still handles queued offline writes; SQLite does not
     replace it. Upgrading the schema recreates the tables (it is only a cache). CLAUDE.md is left unchanged; this note
     and the README supersede its "No Room/SQLite" line.
+28. **Login and sign-out added on request.** Email + password accounts (Firebase Auth), password reset, and "Continue as
+    guest" (the original Anonymous Auth). The app no longer signs in silently: the splash decides between the login
+    screen (nobody signed in) and the app (Firebase remembers the user, also offline). A guest can attach an email in
+    Settings ("Create account (keep my data)") which links to the SAME uid, so nothing is lost. **Sign out** (Settings)
+    asks for confirmation (with a stronger warning for guests, whose data cannot be recovered), stops the Firestore
+    listeners, wipes the SQLite copy and the chat history, clears the back stack and returns to the login screen.
+    The SQLite copy records whose data it holds (`cache_uid`); on a mismatch at startup it is wiped, so one user never
+    sees another's data. Requires Email/Password to be enabled in the Firebase console.
+29. **Build note:** if Gradle fails with "jlink executable ... does not exist", an IDE-started Gradle daemon is using
+    a JRE without jlink. Run `./gradlew --stop` and build with JAVA_HOME pointing at a full JDK (17+).

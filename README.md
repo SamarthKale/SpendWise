@@ -17,7 +17,7 @@ and an analytics engine shows the month-end projection and unusual spending. The
 
 1. **Firebase project** (console.firebase.google.com): add an Android app with package `com.mj.spendwise`,
    download `google-services.json` and put it in `app/` (it is git-ignored; `app/google-services.json.example` shows the shape).
-2. **Authentication → Sign-in method → enable Anonymous.**
+2. **Authentication → Sign-in method → enable both Email/Password and Anonymous** (Email/Password is for the login screen, Anonymous for "Continue as guest").
 3. **Firestore Database → Create database**, then paste the rules from [`firestore.rules`](firestore.rules) and publish.
 4. Use an emulator or phone. **No Maps API key is needed.** (Google Play services is only needed for the location fix.)
 5. Build and run:
@@ -51,7 +51,7 @@ On first launch the app signs in anonymously and seeds about 50 demo expenses sp
 
 ## Demo script (5 minutes)
 
-1. Launch → splash → **Dashboard** with populated charts (chip: Synced ✓).
+1. Launch → splash → **Login** (sign in, create an account, or Continue as guest) → **Dashboard** with populated charts (chip: Synced ✓). Settings → Account has **Sign out**.
 2. **Scan receipt → Use demo receipt** → OCR text → Domino's Pizza / ₹659 / Food pre-filled → Confirm → Save. Dashboard totals update live.
 3. Show the new document in the **Firebase console**.
 4. **Airplane mode on** → banner appears → add an expense → "pending" cloud icon → airplane off → *Syncing* → *Synced*.

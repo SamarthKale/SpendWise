@@ -63,6 +63,20 @@ public class LocalDatabase extends SQLiteOpenHelper {
         onCreate(db);
     }
 
+    /** Wipes every cached row. Called on sign-out so the next user never sees the previous user's data. */
+    public void clearAll() {
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        try {
+            db.delete("expenses", null, null);
+            db.delete("alerts", null, null);
+            db.delete("budget", null, null);
+            db.setTransactionSuccessful();
+        } finally {
+            db.endTransaction();
+        }
+    }
+
     // ---------------- expenses ----------------
 
     /** Replaces the whole cached list in one transaction (mirrors the latest Firestore snapshot). */

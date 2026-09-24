@@ -43,6 +43,8 @@ class ExpenseViewModel(app: Application) : AndroidViewModel(app) {
     sealed interface Startup {
         data object Loading : Startup
         data object Ready : Startup
+        /** Nobody is signed in: show the login screen. */
+        data object NeedsLogin : Startup
         data class Failed(val message: String) : Startup
     }
 
@@ -124,9 +126,18 @@ class ExpenseViewModel(app: Application) : AndroidViewModel(app) {
         FirestoreRepository.computeSyncStatus(online && !paused, pending)
     }.stateIn(viewModelScope, whileSubscribed, SyncStatus.SYNCED)
 
+    private val _email = MutableStateFlow<String?>(null)
+    /** Email of the signed-in account; null for guests. */
+    val email: StateFlow<String?> = _email.asStateFlow()
+
+    private val _isGuest = MutableStateFlow(false)
+    val isGuest: StateFlow<Boolean> = _isGuest.asStateFlow()
+
     init {
         // 1) Read the SQLite copy on a background thread so the UI has data within milliseconds of launch.
         viewModelScope.launch(Dispatchers.IO) {
+            // The copy is only valid for the user who is signed in now; anything else is stale, so wipe it.
+            if (prefs.getString(KEY_CACHE_UID, null) != AuthManager.currentUid()) local.clearAll()
             val t0 = System.nanoTime()
             val rows = local.getExpenses()
             cachedExpenses.value = rows.takeIf { it.isNotEmpty() }
@@ -161,7 +172,13 @@ class ExpenseViewModel(app: Application) : AndroidViewModel(app) {
         connectivity.stop()
     }
 
-    /** Anonymous sign-in, then seed demo data once. Splash waits for this. */
+    // ---- accounts: login / register / guest / sign out ----
+    // (the state itself is declared above `init`, because init calls start() and needs it to exist)
+
+    /**
+     * App start: if a user is already signed in (Firebase remembers them, also offline) go straight in.
+     * Otherwise wait for the login screen. Splash waits for this decision.
+     */
     private fun start() {
         val context = getApplication<Application>()
         if (!FirestoreRepository.isFirebaseConfigured(context)) {
@@ -170,28 +187,91 @@ class ExpenseViewModel(app: Application) : AndroidViewModel(app) {
             )
             return
         }
-        AuthManager.signInAnonymouslyIfNeeded(
-            Callback { uid ->
-                _uid.value = uid
-                val r = FirestoreRepository(uid)
-                repo.value = r
-                r.getBudget(Callback { b ->
-                    if (b != null) { // null = couldn't read (offline): keep the SQLite copy
-                        _budget.value = b
-                        viewModelScope.launch(Dispatchers.IO) { local.saveBudget(b) }
-                    }
-                })
-                // Offline: the seed check can't reach the server, so don't keep the splash waiting.
-                // (Cached data still shows; seeding is retried on the next online launch.)
-                if (connectivity.isOnline().value == false) _startup.value = Startup.Ready
-                r.seedDemoData(DemoData.load(context), false, Callback { _startup.value = Startup.Ready })
-            },
-            Callback { e ->
-                _startup.value = Startup.Failed(
-                    "Sign-in failed: ${e.message}. Is Anonymous sign-in enabled in the Firebase console?"
-                )
+        val uid = AuthManager.currentUid()
+        if (uid == null) {
+            _startup.value = Startup.NeedsLogin
+        } else {
+            beginSession(uid)
+        }
+    }
+
+    /** Everything that depends on WHO is signed in starts here: repository, budget, demo-data seeding. */
+    private fun beginSession(uid: String) {
+        val context = getApplication<Application>()
+        _startup.value = Startup.Loading
+        _uid.value = uid
+        _email.value = AuthManager.currentEmail()
+        _isGuest.value = AuthManager.isGuest()
+        prefs.edit().putString(KEY_CACHE_UID, uid).apply() // the SQLite copy now belongs to this user
+
+        val r = FirestoreRepository(uid)
+        repo.value = r
+        r.getBudget(Callback { b ->
+            if (b != null) { // null = couldn't read (offline): keep the SQLite copy
+                _budget.value = b
+                viewModelScope.launch(Dispatchers.IO) { local.saveBudget(b) }
             }
+        })
+        // Offline: the seed check can't reach the server, so don't keep the splash waiting.
+        // (Cached data still shows; seeding is retried on the next online launch.)
+        if (connectivity.isOnline().value == false) _startup.value = Startup.Ready
+        r.seedDemoData(DemoData.load(context), false, Callback { _startup.value = Startup.Ready })
+    }
+
+    /** Runs [call] with success/error wiring shared by every sign-in style. */
+    private fun authCall(
+        onError: (String) -> Unit,
+        call: (Callback<String>, Callback<Exception>) -> Unit
+    ) {
+        call(
+            Callback { uid -> beginSession(uid) },
+            Callback { e -> onError(AuthManager.describe(e)) }
         )
+    }
+
+    fun signIn(email: String, password: String, onError: (String) -> Unit) =
+        authCall(onError) { ok, err -> AuthManager.signIn(email.trim(), password, ok, err) }
+
+    fun register(email: String, password: String, onError: (String) -> Unit) =
+        authCall(onError) { ok, err -> AuthManager.register(email.trim(), password, ok, err) }
+
+    fun continueAsGuest(onError: (String) -> Unit) =
+        authCall(onError) { ok, err -> AuthManager.signInAsGuest(ok, err) }
+
+    /** Guest -> real account, keeping the same uid (and therefore all data). */
+    fun linkEmail(email: String, password: String, onDone: () -> Unit, onError: (String) -> Unit) {
+        AuthManager.linkEmail(
+            email.trim(), password,
+            Callback { _ ->
+                _email.value = AuthManager.currentEmail()
+                _isGuest.value = AuthManager.isGuest()
+                onDone()
+            },
+            Callback { e -> onError(AuthManager.describe(e)) }
+        )
+    }
+
+    fun sendPasswordReset(email: String, onDone: () -> Unit, onError: (String) -> Unit) {
+        AuthManager.sendPasswordReset(
+            email.trim(), Callback { onDone() }, Callback { e -> onError(AuthManager.describe(e)) }
+        )
+    }
+
+    /**
+     * Signs out and forgets everything that belonged to the user: cloud listeners stop (repo = null), the
+     * SQLite copy is wiped, and the login screen is shown. Other ViewModels follow [uid] / [startup].
+     */
+    fun signOut() {
+        AuthManager.signOut()
+        repo.value = null
+        _uid.value = null
+        _email.value = null
+        _isGuest.value = false
+        cachedExpenses.value = null
+        _budget.value = BudgetConfig()
+        _startup.value = Startup.NeedsLogin
+        prefs.edit().remove(KEY_CACHE_UID).apply()
+        viewModelScope.launch(Dispatchers.IO) { local.clearAll() }
     }
 
     // ---- write operations: return false when the cloud isn't available ----
@@ -232,5 +312,6 @@ class ExpenseViewModel(app: Application) : AndroidViewModel(app) {
 
     private companion object {
         const val KEY_WIFI_ONLY = "wifi_only"
+        const val KEY_CACHE_UID = "cache_uid" // whose data the SQLite copy holds
     }
 }

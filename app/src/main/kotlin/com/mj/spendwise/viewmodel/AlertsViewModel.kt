@@ -74,6 +74,8 @@ class AlertsViewModel(private val app: Application) : AndroidViewModel(app) {
         expenseVm = vm
         vm.onExpenseSaved = { saved -> onExpenseSaved(saved) }
         viewModelScope.launch { vm.repository.collect { repo.value = it } }
+        // Signed out: forget the previous user's cached alerts too.
+        viewModelScope.launch { vm.uid.collect { if (it == null) cachedAlerts.value = null } }
     }
 
     private fun onExpenseSaved(saved: Expense) {

@@ -41,7 +41,9 @@ import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.mj.spendwise.ui.screens.login.LoginScreen
 import com.mj.spendwise.viewmodel.AlertsViewModel
+import com.mj.spendwise.viewmodel.ChatViewModel
 import com.mj.spendwise.viewmodel.ExpenseViewModel
 import androidx.compose.runtime.LaunchedEffect
 import kotlinx.coroutines.flow.first
@@ -98,16 +100,32 @@ fun SpendWiseNavHost(
     // Activity-scoped: one instance (and one Firestore listener) shared by every screen.
     val expenseVm: ExpenseViewModel = viewModel()
     val alertsVm: AlertsViewModel = viewModel()
+    val chatVm: ChatViewModel = viewModel()
     LaunchedEffect(Unit) { alertsVm.attach(expenseVm) }
     val unread by alertsVm.unreadCount.collectAsStateWithLifecycle()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val route = backStackEntry?.destination?.route
     val isTab = route in Routes.tabs
-    val showTopBar = route != null && route != Routes.SPLASH
+    val showTopBar = route != null && route != Routes.SPLASH && route != Routes.LOGIN
 
-    // Notification tap -> open Alerts (waits until the splash has finished).
+    // Sign-out (or any "nobody is signed in" state) sends the user back to the login screen and clears the back
+    // stack, so Back can't return to someone else's data. The chat history is cleared too.
+    val startup by expenseVm.startup.collectAsStateWithLifecycle()
+    LaunchedEffect(startup, route) {
+        if (startup is ExpenseViewModel.Startup.NeedsLogin) {
+            chatVm.reset()
+            if (route != null && route != Routes.SPLASH && route != Routes.LOGIN) {
+                navController.navigate(Routes.LOGIN) {
+                    popUpTo(Routes.MAIN_GRAPH) { inclusive = true }
+                    launchSingleTop = true
+                }
+            }
+        }
+    }
+
+    // Notification tap -> open Alerts (waits until the splash has finished and someone is logged in).
     LaunchedEffect(pendingRoute, route) {
-        if (pendingRoute == "alerts" && route != null && route != Routes.SPLASH) {
+        if (pendingRoute == "alerts" && route != null && route != Routes.SPLASH && route != Routes.LOGIN) {
             if (route != Routes.ALERTS) navController.navigate(Routes.ALERTS) { launchSingleTop = true }
             onRouteHandled()
         }
@@ -189,11 +207,21 @@ fun SpendWiseNavHost(
                         }
                     },
                     onDone = {
-                        navController.navigate(Routes.MAIN_GRAPH) {
+                        // Signed in already (Firebase remembers the user, even offline) -> app; otherwise -> login.
+                        val next = if (expenseVm.startup.value is ExpenseViewModel.Startup.NeedsLogin) Routes.LOGIN else Routes.MAIN_GRAPH
+                        navController.navigate(next) {
                             popUpTo(Routes.SPLASH) { inclusive = true }
                         }
                     }
                 )
+            }
+
+            composable(Routes.LOGIN) {
+                LoginScreen(expenseVm, onLoggedIn = {
+                    navController.navigate(Routes.MAIN_GRAPH) {
+                        popUpTo(Routes.LOGIN) { inclusive = true }
+                    }
+                })
             }
 
             // 3. Nested graph #1: the five bottom-nav tabs.
@@ -211,7 +239,7 @@ fun SpendWiseNavHost(
                 composable(Routes.ANALYTICS) { AnalyticsScreen(expenseVm) }
                 composable(Routes.MAP) { MapScreen(expenseVm) }
                 composable(Routes.CHAT) {
-                    ChatScreen(expenseVm, onAction = { action ->
+                    ChatScreen(expenseVm, chatVm = chatVm, onAction = { action ->
                         when (action) {
                             ChatActionType.NAVIGATE_MAP -> navController.navigateToTab(Routes.MAP)
                             ChatActionType.OPEN_ANALYTICS -> navController.navigateToTab(Routes.ANALYTICS)

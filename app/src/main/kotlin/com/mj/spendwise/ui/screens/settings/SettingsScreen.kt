@@ -48,6 +48,11 @@ fun SettingsScreen(vm: ExpenseViewModel, alertsVm: AlertsViewModel, modifier: Mo
     val wifiOnly by vm.wifiOnly.collectAsStateWithLifecycle()
     val budget by vm.budget.collectAsStateWithLifecycle()
     var showBudget by rememberSaveable { mutableStateOf(false) }
+    val email by vm.email.collectAsStateWithLifecycle()
+    val isGuest by vm.isGuest.collectAsStateWithLifecycle()
+    var showSignOut by rememberSaveable { mutableStateOf(false) }
+    var showLink by rememberSaveable { mutableStateOf(false) }
+    var accountNote by remember { mutableStateOf<String?>(null) }
 
     // Row counts read from SQLite (off the main thread); re-read whenever the lists change.
     val expenseCount = vm.expenses.collectAsStateWithLifecycle().value?.size
@@ -86,6 +91,14 @@ fun SettingsScreen(vm: ExpenseViewModel, alertsVm: AlertsViewModel, modifier: Mo
         modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        Text("Account", style = MaterialTheme.typography.titleMedium)
+        Text(if (isGuest) "Guest account (not saved to an email)" else "Signed in as ${email ?: "unknown"}")
+        if (isGuest) {
+            Button(onClick = { showLink = true }) { Text("Create account (keep my data)") }
+            accountNote?.let { Text(it, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall) }
+        }
+        OutlinedButton(onClick = { showSignOut = true }) { Text("Sign out") }
+
         Text("Budget", style = MaterialTheme.typography.titleMedium)
         Text("Monthly budget: ${formatInr(budget.monthlyBudget)}")
         Button(onClick = { showBudget = true }) { Text("Edit budgets") }
@@ -124,6 +137,24 @@ fun SettingsScreen(vm: ExpenseViewModel, alertsVm: AlertsViewModel, modifier: Mo
         Text("About", style = MaterialTheme.typography.titleMedium)
         Text("SpendWise ${appVersion(context)}", style = MaterialTheme.typography.bodySmall)
         Text("Firebase uid: ${uid ?: "not signed in"}", style = MaterialTheme.typography.bodySmall)
+    }
+
+    if (showSignOut) {
+        SignOutDialog(
+            isGuest = isGuest,
+            onConfirm = {
+                showSignOut = false
+                vm.signOut() // the nav host reacts to "needs login" and returns to the login screen
+            },
+            onDismiss = { showSignOut = false }
+        )
+    }
+    if (showLink) {
+        LinkAccountDialog(
+            vm,
+            onDone = { showLink = false; accountNote = "Account created. Your data is now saved to your email." },
+            onDismiss = { showLink = false }
+        )
     }
 
     if (showBudget) {

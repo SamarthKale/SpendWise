@@ -3,6 +3,7 @@ package com.mj.spendwise.navigation
 /** Every route string in one place (CLAUDE.md 8.2). */
 object Routes {
     const val SPLASH = "splash"
+    const val LOGIN = "login"
 
     // Nested graphs (lab outcome 2: nested navigation graphs)
     const val MAIN_GRAPH = "main_graph"      // the 5 bottom-nav tabs

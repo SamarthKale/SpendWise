@@ -26,6 +26,13 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     private var nextId = 0L
     private var seeded = false
 
+    /** Sign-out: the conversation contained the previous user's numbers, so start fresh. */
+    fun reset() {
+        _messages.value = emptyList()
+        _typing.value = false
+        seeded = false
+    }
+
     /** First open: greeting, "Try asking…" chips, and a sample question with a real answer. */
     fun seedIfNeeded(ctx: ChatContext) {
         if (seeded) return
